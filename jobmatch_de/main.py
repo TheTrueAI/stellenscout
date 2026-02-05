@@ -20,6 +20,7 @@ from .search_agent import (
 )
 from .evaluator_agent import evaluate_all_jobs, filter_good_matches
 from .models import EvaluatedJob
+from .cache import ResultCache
 
 # Load environment variables
 load_dotenv()
@@ -136,6 +137,7 @@ Examples:
   jobmatch-de cv.pdf
   jobmatch-de cv.pdf --location Berlin
   jobmatch-de cv.pdf --min-score 80 --jobs-per-query 10
+  jobmatch-de cv.pdf --no-cache
         """,
     )
 
@@ -162,8 +164,15 @@ Examples:
         default=10,
         help="Number of jobs to fetch per search query (default: 10)",
     )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Ignore cache and force a fresh run",
+    )
 
     args = parser.parse_args()
+
+    cache = ResultCache() if not args.no_cache else None
 
     # Header
     console.print()
@@ -193,12 +202,25 @@ Examples:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task("Analyzing CV with AI...", total=None)
-            client = create_client()
-            profile = profile_candidate(client, cv_text)
-            progress.update(task, description="[green]✓[/green] Profile extracted")
+            cached_profile = cache.load_profile(cv_text) if cache else None
+            if cached_profile is not None:
+                profile = cached_profile
+                progress.add_task("[green]✓[/green] Profile extracted [dim][cached][/dim]", total=None)
+            else:
+                task = progress.add_task("Analyzing CV with AI...", total=None)
+                client = create_client()
+                profile = profile_candidate(client, cv_text)
+                if cache:
+                    cache.save_profile(cv_text, profile)
+                progress.update(task, description="[green]✓[/green] Profile extracted")
 
         display_profile(profile)
+
+        # Ensure client exists for non-cached steps
+        if not cached_profile:
+            pass  # client already created above
+        else:
+            client = None  # lazy — only create if needed later
 
         # Step 3: Generate search queries
         with Progress(
@@ -206,9 +228,18 @@ Examples:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task("Generating search queries...", total=None)
-            queries = generate_search_queries(client, profile, args.location)
-            progress.update(task, description="[green]✓[/green] Queries generated")
+            cached_queries = cache.load_queries(profile, args.location) if cache else None
+            if cached_queries is not None:
+                queries = cached_queries
+                progress.add_task("[green]✓[/green] Queries generated [dim][cached][/dim]", total=None)
+            else:
+                task = progress.add_task("Generating search queries...", total=None)
+                if client is None:
+                    client = create_client()
+                queries = generate_search_queries(client, profile, args.location)
+                if cache:
+                    cache.save_queries(profile, args.location, queries)
+                progress.update(task, description="[green]✓[/green] Queries generated")
 
         display_queries(queries)
 
@@ -218,37 +249,89 @@ Examples:
             TextColumn("[progress.description]{task.description}"),
             console=console,
         ) as progress:
-            task = progress.add_task("Searching for jobs...", total=None)
-            jobs = search_all_queries(queries, jobs_per_query=args.jobs_per_query, location=args.location)
-            progress.update(
-                task,
-                description=f"[green]✓[/green] Found {len(jobs)} unique jobs"
-            )
+            cached_jobs = cache.load_jobs() if cache else None
+            if cached_jobs is not None:
+                jobs = cached_jobs
+                progress.add_task(
+                    f"[green]✓[/green] Found {len(jobs)} unique jobs [dim][cached][/dim]",
+                    total=None,
+                )
+            else:
+                task = progress.add_task("Searching for jobs...", total=None)
+                jobs = search_all_queries(queries, jobs_per_query=args.jobs_per_query, location=args.location)
+                if cache:
+                    cache.save_jobs(jobs)
+                progress.update(
+                    task,
+                    description=f"[green]✓[/green] Found {len(jobs)} unique jobs"
+                )
 
         if not jobs:
             console.print("[yellow]No jobs found. Try adjusting your search location.[/yellow]")
             return 1
 
-        # Step 5: Evaluate jobs
+        # Step 5: Evaluate jobs (only new ones)
         console.print()
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            console=console,
-        ) as progress:
-            task = progress.add_task("Evaluating jobs...", total=len(jobs))
 
-            def update_progress(current, total):
-                progress.update(
-                    task,
-                    description=f"Evaluating job {current}/{total}...",
-                    completed=current,
+        if cache:
+            new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile)
+        else:
+            new_jobs, cached_evals = jobs, {}
+
+        if not new_jobs:
+            # Everything is cached
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                progress.add_task(
+                    f"[green]✓[/green] All {len(cached_evals)} evaluations loaded [dim][cached][/dim]",
+                    total=None,
                 )
+            all_evals = cached_evals
+        else:
+            with Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                console=console,
+            ) as progress:
+                total_jobs = len(new_jobs)
+                cached_count = len(cached_evals)
+                label = f"Evaluating {total_jobs} new jobs"
+                if cached_count:
+                    label += f" ({cached_count} cached)"
+                task = progress.add_task(f"{label}...", total=total_jobs)
 
-            evaluated_jobs = evaluate_all_jobs(
-                client, profile, jobs, progress_callback=update_progress
-            )
-            progress.update(task, description="[green]✓[/green] Evaluation complete")
+                def update_progress(current, total):
+                    progress.update(
+                        task,
+                        description=f"Evaluating job {current}/{total}...",
+                        completed=current,
+                    )
+
+                if client is None:
+                    client = create_client()
+                new_evaluated = evaluate_all_jobs(
+                    client, profile, new_jobs, progress_callback=update_progress
+                )
+                progress.update(task, description="[green]✓[/green] Evaluation complete")
+
+            # Merge new evaluations into cached
+            all_evals = dict(cached_evals)
+            for ej in new_evaluated:
+                key = f"{ej.job.title}|{ej.job.company_name}"
+                all_evals[key] = ej
+
+            if cache:
+                cache.save_evaluations(profile, all_evals)
+
+        # Build final sorted list
+        evaluated_jobs = sorted(
+            all_evals.values(),
+            key=lambda x: x.evaluation.score,
+            reverse=True,
+        )
 
         console.print()
 

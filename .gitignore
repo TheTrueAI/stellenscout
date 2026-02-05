@@ -40,3 +40,4 @@ Thumbs.db
 *.pdf
 output/
 *cv*.md
+.jobmatch_cache/
