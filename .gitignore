@@ -39,3 +39,4 @@ Thumbs.db
 # Project specific
 *.pdf
 output/
+*cv*.md

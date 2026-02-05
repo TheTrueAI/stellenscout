@@ -11,9 +11,9 @@ from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich import print as rprint
 
-from .cv_parser import extract_text_from_pdf, format_cv_as_markdown
+from .cv_parser import extract_text, format_cv_as_markdown
+from .llm import create_client
 from .search_agent import (
-    create_client,
     profile_candidate,
     generate_search_queries,
     search_all_queries,
@@ -133,7 +133,7 @@ Examples:
     parser.add_argument(
         "cv_path",
         type=Path,
-        help="Path to your CV in PDF format",
+        help="Path to your CV (supported: .pdf, .docx, .md, .txt)",
     )
     parser.add_argument(
         "--location", "-l",
@@ -150,8 +150,8 @@ Examples:
     parser.add_argument(
         "--jobs-per-query", "-j",
         type=int,
-        default=5,
-        help="Number of jobs to fetch per search query (default: 5)",
+        default=10,
+        help="Number of jobs to fetch per search query (default: 10)",
     )
 
     args = parser.parse_args()
@@ -175,7 +175,7 @@ Examples:
             console=console,
         ) as progress:
             task = progress.add_task("Reading CV...", total=None)
-            cv_text = extract_text_from_pdf(args.cv_path)
+            cv_text = extract_text(args.cv_path)
             progress.update(task, description="[green]✓[/green] CV loaded")
 
         # Step 2: Profile candidate
@@ -210,7 +210,7 @@ Examples:
             console=console,
         ) as progress:
             task = progress.add_task("Searching for jobs...", total=None)
-            jobs = search_all_queries(queries, jobs_per_query=args.jobs_per_query)
+            jobs = search_all_queries(queries, jobs_per_query=args.jobs_per_query, location=args.location)
             progress.update(
                 task,
                 description=f"[green]✓[/green] Found {len(jobs)} unique jobs"

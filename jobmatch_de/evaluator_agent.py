@@ -1,17 +1,10 @@
 """Evaluator Agent module - Scores job listings against CV using LLM."""
 
-import json
-import time
-import random
 from google import genai
-from google.genai import types
 from google.genai.errors import ServerError, ClientError
 
 from .models import CandidateProfile, JobListing, JobEvaluation, EvaluatedJob
-
-# Retry configuration
-MAX_RETRIES = 5
-BASE_DELAY = 2  # seconds
+from .llm import call_gemini, parse_json
 
 # System prompt for the Screener agent
 SCREENER_SYSTEM_PROMPT = """You are a strict Hiring Manager. Evaluate if the candidate is a fit for this specific job.
@@ -32,46 +25,6 @@ Return ONLY a JSON object with:
 - "missing_skills": (list) What is the candidate missing? Empty list if nothing major.
 
 Be critical but fair. German companies often have strict requirements."""
-
-
-def retry_with_backoff(func):
-    """Decorator that retries a function with exponential backoff on transient errors."""
-    def wrapper(*args, **kwargs):
-        last_exception = None
-        for attempt in range(MAX_RETRIES):
-            try:
-                return func(*args, **kwargs)
-            except ServerError as e:
-                last_exception = e
-                if attempt < MAX_RETRIES - 1:
-                    # Exponential backoff with jitter
-                    delay = BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
-                    time.sleep(delay)
-            except ClientError as e:
-                # For rate limits (429), also retry
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    last_exception = e
-                    if attempt < MAX_RETRIES - 1:
-                        delay = BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
-                        time.sleep(delay)
-                else:
-                    raise
-        raise last_exception
-    return wrapper
-
-
-@retry_with_backoff
-def _call_gemini(client: genai.Client, prompt: str, temperature: float = 0.2, max_tokens: int = 512) -> str:
-    """Make a Gemini API call with retry logic."""
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-        )
-    )
-    return response.text
 
 
 def evaluate_job(
@@ -111,48 +64,22 @@ Evaluate this job match and return JSON."""
     prompt = f"{SCREENER_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     try:
-        content = _call_gemini(client, prompt, temperature=0.2, max_tokens=512)
-    except (ServerError, ClientError) as e:
-        # If all retries failed, return a fallback evaluation
+        content = call_gemini(client, prompt, temperature=0.2, max_tokens=8192)
+    except (ServerError, ClientError):
         return JobEvaluation(
             score=50,
-            reasoning=f"Could not evaluate (API error after retries)",
+            reasoning="Could not evaluate (API error after retries)",
             missing_skills=[]
         )
 
-    # Handle empty/None response (safety filters or rate limits)
-    if not content:
-        return JobEvaluation(
-            score=50,
-            reasoning="Could not evaluate (API returned empty response)",
-            missing_skills=[]
-        )
-
-    # Parse JSON response
-    import re
     try:
-        # Remove markdown code blocks if present
-        clean_content = re.sub(r'^```json\s*', '', content)
-        clean_content = re.sub(r'\s*```$', '', clean_content)
-        data = json.loads(clean_content)
-    except json.JSONDecodeError:
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            try:
-                data = json.loads(json_match.group())
-            except json.JSONDecodeError:
-                return JobEvaluation(
-                    score=0,
-                    reasoning=f"Failed to parse evaluation: {content[:100]}",
-                    missing_skills=[]
-                )
-        else:
-            # Fallback for unparseable response
-            return JobEvaluation(
-                score=0,
-                reasoning=f"Failed to parse evaluation: {content[:100]}",
-                missing_skills=[]
-            )
+        data = parse_json(content)
+    except ValueError:
+        return JobEvaluation(
+            score=50,
+            reasoning="Could not evaluate (failed to parse response)",
+            missing_skills=[]
+        )
 
     return JobEvaluation(**data)
 

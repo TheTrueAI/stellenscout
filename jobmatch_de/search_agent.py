@@ -1,19 +1,11 @@
 """Search Agent module - Generates optimized job search queries using LLM."""
 
-import json
 import os
-import time
-import random
 from google import genai
-from google.genai import types
-from google.genai.errors import ServerError, ClientError
 from serpapi import GoogleSearch
 
 from .models import CandidateProfile, JobListing
-
-# Retry configuration
-MAX_RETRIES = 5
-BASE_DELAY = 2  # seconds
+from .llm import call_gemini, parse_json
 
 # System prompt for the Profiler agent
 PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter. You will be given the raw text of a candidate's CV.
@@ -29,67 +21,19 @@ Return a JSON object with:
 Return ONLY valid JSON, no markdown or explanation."""
 
 # System prompt for the Headhunter agent
-HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 5 distinct search queries to find relevant job openings in Germany.
+HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 10 distinct search queries to find relevant job openings in Germany.
 
-IMPORTANT: Keep queries SHORT and SIMPLE (2-4 words max). Google Jobs works best with simple queries.
+IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
 
-Guidelines:
-- Use simple job titles + location (e.g., "Software Engineer Berlin")
-- Mix English and German job titles (e.g., "Berater München", "Consultant Berlin")
-- DO NOT use complex boolean queries or too many keywords
-- Each query should be different to maximize job variety
+Strategy for MAXIMUM coverage:
+- Generate a MIX of broad and specific queries
+- Include BOTH English and German job titles (e.g., "Consultant München" AND "Berater München")
+- Include some queries WITHOUT a city to find remote/nationwide jobs
+- Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
+- Include 1-2 broad industry/domain queries (e.g., "Nachhaltigkeit München", "ESG Germany")
 
-Return ONLY a JSON array of 5 search query strings, no explanation.
-Example: ["Python Developer Berlin", "Backend Engineer München", "Softwareentwickler Hamburg", "Data Engineer remote Germany", "Entwickler Frankfurt"]"""
-
-
-def retry_with_backoff(func):
-    """Decorator that retries a function with exponential backoff on transient errors."""
-    def wrapper(*args, **kwargs):
-        last_exception = None
-        for attempt in range(MAX_RETRIES):
-            try:
-                return func(*args, **kwargs)
-            except ServerError as e:
-                last_exception = e
-                if attempt < MAX_RETRIES - 1:
-                    # Exponential backoff with jitter
-                    delay = BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
-                    time.sleep(delay)
-            except ClientError as e:
-                # For rate limits (429), also retry
-                if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
-                    last_exception = e
-                    if attempt < MAX_RETRIES - 1:
-                        delay = BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
-                        time.sleep(delay)
-                else:
-                    raise
-        raise last_exception
-    return wrapper
-
-
-def create_client() -> genai.Client:
-    """Create a Gemini client."""
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
-        raise ValueError("GOOGLE_API_KEY environment variable not set")
-
-    return genai.Client(api_key=api_key)
-
-
-@retry_with_backoff
-def _call_gemini(client: genai.Client, prompt: str, temperature: float = 0.3, max_tokens: int = 1024) -> str:
-    """Make a Gemini API call with retry logic."""
-    response = client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            temperature=temperature,
-            max_output_tokens=max_tokens,
-        )
-    )
-    return response.text
+Return ONLY a JSON array of 10 search query strings, no explanation.
+Example: ["Python Developer Berlin", "Backend Engineer Berlin", "Softwareentwickler Berlin", "Developer remote Germany", "Entwickler Berlin", "Software Engineer", "IT Berater Berlin", "Cloud Engineer Berlin", "DevOps Berlin", "Programmierer Berlin"]"""
 
 
 def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
@@ -103,44 +47,10 @@ def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
     Returns:
         Structured candidate profile.
     """
-    # Truncate very long CVs to avoid rate limit issues
-    max_cv_length = 6000
-    if len(cv_text) > max_cv_length:
-        cv_text = cv_text[:max_cv_length] + "\n[...CV truncated for processing...]"
-
     prompt = f"{PROFILER_SYSTEM_PROMPT}\n\nExtract the profile from this CV:\n\n{cv_text}"
 
-    content = _call_gemini(client, prompt, temperature=0.3, max_tokens=1024)
-
-    # Check for empty response
-    if not content:
-        raise ValueError(
-            "Empty response from API. You may have hit rate limits. "
-            "Please wait a minute and try again."
-        )
-
-    # Parse JSON response
-    import re
-    try:
-        # Remove markdown code blocks if present
-        clean_content = re.sub(r'^```json\s*', '', content)
-        clean_content = re.sub(r'\s*```$', '', clean_content)
-        data = json.loads(clean_content)
-    except json.JSONDecodeError:
-        # Try to extract JSON from response if wrapped in markdown
-        json_match = re.search(r'\{[\s\S]*\}', content)
-        if json_match:
-            try:
-                data = json.loads(json_match.group())
-            except json.JSONDecodeError:
-                raise ValueError(
-                    f"Failed to parse profile response (possibly truncated due to rate limits): {content[:200]}..."
-                )
-        else:
-            raise ValueError(
-                f"Failed to parse profile response (possibly truncated due to rate limits): {content[:200]}..."
-            )
-
+    content = call_gemini(client, prompt, temperature=0.3, max_tokens=8192)
+    data = parse_json(content)
     return CandidateProfile(**data)
 
 
@@ -170,66 +80,16 @@ def generate_search_queries(
 
     prompt = f"{HEADHUNTER_SYSTEM_PROMPT}\n\n{profile_text}"
 
-    content = _call_gemini(client, prompt, temperature=0.5, max_tokens=1024)
-
-    # Parse JSON array response
-    import re
-    try:
-        queries = json.loads(content)
-    except json.JSONDecodeError:
-        # Try to extract complete JSON array
-        json_match = re.search(r'\[[\s\S]*\]', content)
-        if json_match:
-            try:
-                queries = json.loads(json_match.group())
-            except json.JSONDecodeError:
-                # Try to extract individual quoted strings if array is malformed
-                string_matches = re.findall(r'"([^"]+)"', content)
-                if string_matches:
-                    queries = string_matches[:5]
-                else:
-                    raise ValueError(f"Failed to parse queries response: {content}")
-        else:
-            # Try to extract individual quoted strings
-            string_matches = re.findall(r'"([^"]+)"', content)
-            if string_matches:
-                queries = string_matches[:5]
-            else:
-                raise ValueError(f"Failed to parse queries response: {content}")
-
+    content = call_gemini(client, prompt, temperature=0.5, max_tokens=8192)
+    queries = parse_json(content)
     return queries
 
 
-def search_jobs(query: str, num_results: int = 10) -> list[JobListing]:
-    """
-    Search for jobs using SerpApi Google Jobs engine.
-
-    Args:
-        query: Search query string.
-        num_results: Maximum number of results to return.
-
-    Returns:
-        List of job listings.
-    """
-    api_key = os.getenv("SERPAPI_KEY")
-    if not api_key:
-        raise ValueError("SERPAPI_KEY environment variable not set")
-
-    params = {
-        "engine": "google_jobs",
-        "q": query,
-        "gl": "de",  # Germany
-        "hl": "en",  # English results
-        "api_key": api_key,
-    }
-
-    search = GoogleSearch(params)
-    results = search.get_dict()
-
+def _parse_job_results(results: dict) -> list[JobListing]:
+    """Parse job listings from a SerpApi response dict."""
     jobs: list[JobListing] = []
 
-    for job_data in results.get("jobs_results", [])[:num_results]:
-        # Extract description from highlights or extensions
+    for job_data in results.get("jobs_results", []):
         description_parts = []
         if "description" in job_data:
             description_parts.append(job_data["description"])
@@ -251,21 +111,88 @@ def search_jobs(query: str, num_results: int = 10) -> list[JobListing]:
     return jobs
 
 
-def search_all_queries(queries: list[str], jobs_per_query: int = 5) -> list[JobListing]:
+def search_jobs(query: str, num_results: int = 10) -> list[JobListing]:
+    """
+    Search for jobs using SerpApi Google Jobs engine with pagination.
+
+    Args:
+        query: Search query string.
+        num_results: Maximum number of results to return.
+
+    Returns:
+        List of job listings.
+    """
+    api_key = os.getenv("SERPAPI_KEY")
+    if not api_key:
+        raise ValueError("SERPAPI_KEY environment variable not set")
+
+    all_jobs: list[JobListing] = []
+    next_page_token = None
+
+    while len(all_jobs) < num_results:
+        params = {
+            "engine": "google_jobs",
+            "q": query,
+            "gl": "de",  # Germany
+            "hl": "en",  # English results
+            "api_key": api_key,
+        }
+        if next_page_token:
+            params["next_page_token"] = next_page_token
+
+        search = GoogleSearch(params)
+        results = search.get_dict()
+
+        page_jobs = _parse_job_results(results)
+        if not page_jobs:
+            break
+
+        all_jobs.extend(page_jobs)
+
+        # Check for next page
+        pagination = results.get("serpapi_pagination", {})
+        next_page_token = pagination.get("next_page_token")
+        if not next_page_token:
+            break
+
+    return all_jobs[:num_results]
+
+
+def search_all_queries(
+    queries: list[str],
+    jobs_per_query: int = 10,
+    location: str = "Germany",
+) -> list[JobListing]:
     """
     Search for jobs across multiple queries and deduplicate results.
+    Queries without a location keyword get the location appended automatically,
+    since Google Jobs returns nothing without geographic context.
 
     Args:
         queries: List of search queries.
         jobs_per_query: Number of jobs to fetch per query.
+        location: Target location to append to queries missing one.
 
     Returns:
         Deduplicated list of job listings.
     """
+    # Common German city names / location keywords for detection
+    _LOCATION_KEYWORDS = {
+        "berlin", "münchen", "munich", "hamburg", "frankfurt", "köln", "cologne",
+        "düsseldorf", "stuttgart", "dortmund", "essen", "leipzig", "bremen",
+        "dresden", "hannover", "nürnberg", "nuremberg", "germany", "deutschland",
+        "remote",
+    }
+
     all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
 
     for query in queries:
-        jobs = search_jobs(query, num_results=jobs_per_query)
+        # If the query doesn't already mention a location, append one
+        query_lower = query.lower()
+        has_location = any(kw in query_lower for kw in _LOCATION_KEYWORDS)
+        search_query = query if has_location else f"{query} {location}"
+
+        jobs = search_jobs(search_query, num_results=jobs_per_query)
         for job in jobs:
             key = f"{job.title}|{job.company_name}"
             if key not in all_jobs:
