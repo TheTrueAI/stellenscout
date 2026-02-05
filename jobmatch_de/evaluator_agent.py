@@ -43,12 +43,16 @@ def evaluate_job(
     Returns:
         Evaluation with score and reasoning.
     """
+    certs_line = f"\n- **Certifications:** {', '.join(profile.certifications)}" if profile.certifications else ""
+    edu_line = f"\n- **Education:** {', '.join(profile.education)}" if profile.education else ""
+    summary_line = f"\n- **Summary:** {profile.summary}" if profile.summary else ""
+
     user_prompt = f"""## Candidate Profile
 - **Skills:** {', '.join(profile.skills)}
-- **Experience Level:** {profile.experience_level}
+- **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
 - **Target Roles:** {', '.join(profile.roles)}
 - **Languages:** {', '.join(profile.languages)}
-- **Domain Expertise:** {', '.join(profile.domain_expertise)}
+- **Domain Expertise:** {', '.join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}
 
 ## Job Listing
 - **Title:** {job.title}

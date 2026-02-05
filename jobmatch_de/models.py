@@ -8,19 +8,35 @@ class CandidateProfile(BaseModel):
     """Structured summary of a candidate's CV."""
 
     skills: list[str] = Field(
-        description="Top 10 hard skills from the CV"
+        description="All hard skills, tools, frameworks, and methodologies from the CV"
     )
     experience_level: Literal["Junior", "Mid", "Senior", "Lead", "CTO"] = Field(
         description="Seniority level based on experience"
     )
+    years_of_experience: int = Field(
+        default=0,
+        description="Total years of professional experience"
+    )
     roles: list[str] = Field(
-        description="3 job titles the candidate is suited for"
+        description="5 job titles the candidate is suited for, from most to least specific"
     )
     languages: list[str] = Field(
         description="Spoken languages with proficiency (e.g., 'German C1')"
     )
     domain_expertise: list[str] = Field(
         description="Key industries (e.g., Fintech, Automotive)"
+    )
+    certifications: list[str] = Field(
+        default_factory=list,
+        description="Professional certifications and accreditations"
+    )
+    education: list[str] = Field(
+        default_factory=list,
+        description="Degrees and fields of study (e.g., 'MSc Environmental Engineering')"
+    )
+    summary: str = Field(
+        default="",
+        description="2-3 sentence professional summary of the candidate"
     )
 
 

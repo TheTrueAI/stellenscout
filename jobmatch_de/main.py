@@ -29,15 +29,24 @@ console = Console()
 
 def display_profile(profile) -> None:
     """Display the extracted candidate profile."""
-    profile_text = f"""[bold]Skills:[/bold] {', '.join(profile.skills)}
+    parts = []
 
-[bold]Experience Level:[/bold] {profile.experience_level}
+    if profile.summary:
+        parts.append(f"[italic]{profile.summary}[/italic]")
+        parts.append("")
 
-[bold]Target Roles:[/bold] {', '.join(profile.roles)}
+    parts.append(f"[bold]Experience:[/bold] {profile.experience_level} ({profile.years_of_experience} years)")
+    parts.append(f"[bold]Target Roles:[/bold] {', '.join(profile.roles)}")
+    parts.append(f"[bold]Skills:[/bold] {', '.join(profile.skills)}")
+    parts.append(f"[bold]Languages:[/bold] {', '.join(profile.languages)}")
+    parts.append(f"[bold]Domain Expertise:[/bold] {', '.join(profile.domain_expertise)}")
 
-[bold]Languages:[/bold] {', '.join(profile.languages)}
+    if profile.education:
+        parts.append(f"[bold]Education:[/bold] {', '.join(profile.education)}")
+    if profile.certifications:
+        parts.append(f"[bold]Certifications:[/bold] {', '.join(profile.certifications)}")
 
-[bold]Domain Expertise:[/bold] {', '.join(profile.domain_expertise)}"""
+    profile_text = "\n".join(parts)
 
     panel = Panel(profile_text, title="📋 Candidate Profile", border_style="blue")
     console.print(panel)
