@@ -1,5 +1,7 @@
 """Evaluator Agent module - Scores job listings against CV using LLM."""
 
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from google import genai
 from google.genai.errors import ServerError, ClientError
 
@@ -92,28 +94,40 @@ def evaluate_all_jobs(
     client: genai.Client,
     profile: CandidateProfile,
     jobs: list[JobListing],
-    progress_callback=None
+    progress_callback=None,
+    max_workers: int = 5,
 ) -> list[EvaluatedJob]:
     """
-    Evaluate multiple jobs against the candidate profile.
+    Evaluate multiple jobs against the candidate profile in parallel.
 
     Args:
         client: Gemini client instance.
         profile: Candidate's structured profile.
         jobs: List of job listings to evaluate.
         progress_callback: Optional callback(current, total) for progress updates.
+        max_workers: Number of concurrent API calls.
 
     Returns:
         List of evaluated jobs, sorted by score descending.
     """
     evaluated: list[EvaluatedJob] = []
+    counter_lock = threading.Lock()
+    completed_count = 0
 
-    for i, job in enumerate(jobs):
-        if progress_callback:
-            progress_callback(i + 1, len(jobs))
-
+    def _evaluate_one(job: JobListing) -> EvaluatedJob:
+        nonlocal completed_count
         evaluation = evaluate_job(client, profile, job)
-        evaluated.append(EvaluatedJob(job=job, evaluation=evaluation))
+        result = EvaluatedJob(job=job, evaluation=evaluation)
+        if progress_callback:
+            with counter_lock:
+                completed_count += 1
+                progress_callback(completed_count, len(jobs))
+        return result
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_evaluate_one, job): job for job in jobs}
+        for future in as_completed(futures):
+            evaluated.append(future.result())
 
     # Sort by score descending
     evaluated.sort(key=lambda x: x.evaluation.score, reverse=True)

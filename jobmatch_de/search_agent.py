@@ -51,7 +51,7 @@ def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
         cv_text: Raw text extracted from CV.
 
     Returns:
-        Structured candidate profile.
+        Structured candidate profile
     """
     prompt = f"{PROFILER_SYSTEM_PROMPT}\n\nExtract the profile from this CV:\n\n{cv_text}"
 
