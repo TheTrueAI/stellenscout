@@ -1,5 +1,6 @@
 # Environment
 .env
+.claude/
 .venv/
 venv/
 env/

@@ -4,6 +4,9 @@
 # PDF parsing
 pdfplumber>=0.10.0
 
+# DOCX parsing
+python-docx>=1.0.0
+
 # Job search API
 google-search-results>=2.4.2  # SerpApi client
 
