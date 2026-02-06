@@ -95,7 +95,7 @@ def evaluate_all_jobs(
     profile: CandidateProfile,
     jobs: list[JobListing],
     progress_callback=None,
-    max_workers: int = 5,
+    max_workers: int = 10,
 ) -> list[EvaluatedJob]:
     """
     Evaluate multiple jobs against the candidate profile in parallel.

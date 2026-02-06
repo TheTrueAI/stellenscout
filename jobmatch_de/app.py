@@ -1,6 +1,8 @@
 """Streamlit web UI for JobMatch-DE."""
 
+import logging
 import os
+import time
 import uuid
 import tempfile
 import shutil
@@ -9,6 +11,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import streamlit as st
+
+jobs_per_query = 10  # default value
 
 # ---------------------------------------------------------------------------
 # Inject API keys from Streamlit secrets into env vars
@@ -45,12 +49,17 @@ st.set_page_config(
 # ---------------------------------------------------------------------------
 # Session state defaults
 # ---------------------------------------------------------------------------
+logger = logging.getLogger(__name__)
+
 _DEFAULTS = {
     "session_id": str(uuid.uuid4()),
     "profile": None,
     "queries": None,
     "evaluated_jobs": None,
     "cv_text": None,
+    "cv_file_hash": None,
+    "last_run_time": 0.0,
+    "run_requested": False,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -63,22 +72,39 @@ CACHE_ROOT = Path(".jobmatch_cache")
 
 
 def _get_cache() -> ResultCache:
-    return ResultCache(cache_dir=CACHE_ROOT / st.session_state.session_id)
+    sid = st.session_state.session_id
+    try:
+        uuid.UUID(sid)
+    except (ValueError, AttributeError):
+        sid = str(uuid.uuid4())
+        st.session_state.session_id = sid
+    return ResultCache(cache_dir=CACHE_ROOT / sid)
 
 
-def _cleanup_old_sessions(max_age_hours: int = 24) -> None:
-    """Delete session cache dirs older than *max_age_hours*."""
+def _cleanup_old_sessions(
+    max_age_hours: int = 24, max_sessions: int = 50
+) -> None:
+    """Delete session cache dirs older than *max_age_hours* and cap total count."""
     if not CACHE_ROOT.exists():
         return
     cutoff = datetime.now() - timedelta(hours=max_age_hours)
+    dirs: list[tuple[float, Path]] = []
     for child in CACHE_ROOT.iterdir():
         if child.is_dir() and child.name != st.session_state.session_id:
             try:
-                mtime = datetime.fromtimestamp(child.stat().st_mtime)
+                mtime_ts = child.stat().st_mtime
+                mtime = datetime.fromtimestamp(mtime_ts)
                 if mtime < cutoff:
                     shutil.rmtree(child, ignore_errors=True)
+                else:
+                    dirs.append((mtime_ts, child))
             except OSError:
                 pass
+    # Cap total number of session directories
+    if len(dirs) >= max_sessions:
+        dirs.sort()  # oldest first
+        for _, d in dirs[: len(dirs) - max_sessions + 1]:
+            shutil.rmtree(d, ignore_errors=True)
 
 
 # Housekeeping — runs once per session on first load
@@ -100,7 +126,14 @@ with st.sidebar:
         help="Supported formats: PDF, DOCX, Markdown, plain text",
     )
 
-    location = st.text_input("Target location", value="Germany")
+    with st.form("search_form"):
+        location = st.text_input("Target location", max_chars=100)
+        run_button = st.form_submit_button(
+            "🚀 Find Jobs",
+            use_container_width=True,
+            disabled=uploaded_file is None,
+            type="primary",
+        )
 
     min_score = st.slider(
         "Minimum match score",
@@ -111,26 +144,16 @@ with st.sidebar:
         help="Only show jobs scoring at or above this threshold",
     )
 
-    jobs_per_query = st.slider(
-        "Jobs per search query",
-        min_value=5,
-        max_value=20,
-        value=10,
-        step=5,
-    )
-
-    run_button = st.button(
-        "🚀 Find Jobs",
-        use_container_width=True,
-        disabled=uploaded_file is None,
-        type="primary",
-    )
-
     st.divider()
     st.caption(
         "Built with [Streamlit](https://streamlit.io) • "
         "Powered by Gemini & SerpApi"
     )
+
+# Sanitize location
+location = location.strip()[:100]
+
+_MAX_CV_CHARS = 50_000
 
 
 # ---------------------------------------------------------------------------
@@ -143,9 +166,13 @@ def _extract_uploaded_cv(uploaded_file) -> str:
         tmp.write(uploaded_file.getbuffer())
         tmp_path = Path(tmp.name)
     try:
-        return extract_text(tmp_path)
+        text = extract_text(tmp_path)
     finally:
         tmp_path.unlink(missing_ok=True)
+    if len(text) > _MAX_CV_CHARS:
+        st.warning("CV text was very long and has been truncated.")
+        text = text[:_MAX_CV_CHARS]
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -185,114 +212,39 @@ def _score_emoji(score: int) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Helper: render a single job card
+# ---------------------------------------------------------------------------
+def _render_job_card(ej: EvaluatedJob) -> None:
+    score = ej.evaluation.score
+    emoji = _score_emoji(score)
+    missing = ", ".join(ej.evaluation.missing_skills) if ej.evaluation.missing_skills else None
+
+    with st.container(border=True):
+        left, center, right = st.columns([0.6, 4, 1])
+
+        with left:
+            st.markdown(f"## {emoji}")
+            st.markdown(f"**{score}**/100")
+
+        with center:
+            st.markdown(f"**{ej.job.title}** @ {ej.job.company_name}")
+            st.caption(
+                f"📍 {ej.job.location}"
+                + (f"  •  🕐 {ej.job.posted_at}" if ej.job.posted_at else "")
+            )
+            st.markdown(ej.evaluation.reasoning)
+            if missing:
+                st.markdown(f"**Missing:** {missing}")
+
+        with right:
+            if ej.job.link:
+                st.link_button("Apply ↗", ej.job.link, use_container_width=True)
+
+
+# ---------------------------------------------------------------------------
 # Profile placeholder — sits at the top, rendered early during pipeline
 # ---------------------------------------------------------------------------
 profile_slot = st.empty()
-
-# ---------------------------------------------------------------------------
-# Main area
-# ---------------------------------------------------------------------------
-def _run_pipeline() -> None:
-    """Execute the full pipeline with live status updates."""
-    cache = _get_cache()
-    client = None  # lazy — only created when needed
-
-    # ---- Step 1: Parse CV ------------------------------------------------
-    with st.status("📄 Reading CV…", expanded=False) as status:
-        cv_text = _extract_uploaded_cv(uploaded_file)
-        st.session_state.cv_text = cv_text
-        status.update(label="✅ CV loaded", state="complete")
-
-    # ---- Step 2: Profile candidate ---------------------------------------
-    with st.status("🧠 Analyzing CV with AI…", expanded=False) as status:
-        cached_profile = cache.load_profile(cv_text)
-        if cached_profile is not None:
-            profile = cached_profile
-            status.update(label="✅ Profile extracted (cached)", state="complete")
-        else:
-            client = create_client()
-            profile = profile_candidate(client, cv_text)
-            cache.save_profile(cv_text, profile)
-            status.update(label="✅ Profile extracted", state="complete")
-    st.session_state.profile = profile
-
-    # Show profile immediately in the top slot
-    with profile_slot.container():
-        _render_profile(profile)
-
-    # ---- Step 3: Generate queries ----------------------------------------
-    with st.status("🔍 Generating search queries…", expanded=False) as status:
-        cached_queries = cache.load_queries(profile, location)
-        if cached_queries is not None:
-            queries = cached_queries
-            status.update(label="✅ Queries generated (cached)", state="complete")
-        else:
-            if client is None:
-                client = create_client()
-            queries = generate_search_queries(client, profile, location)
-            cache.save_queries(profile, location, queries)
-            status.update(label="✅ Queries generated", state="complete")
-    st.session_state.queries = queries
-
-    # ---- Step 4: Search for jobs -----------------------------------------
-    with st.status("🌐 Searching for jobs…", expanded=False) as status:
-        cached_jobs = cache.load_jobs()
-        if cached_jobs is not None:
-            jobs = cached_jobs
-            status.update(label=f"✅ Found {len(jobs)} jobs (cached)", state="complete")
-        else:
-            jobs = search_all_queries(queries, jobs_per_query=jobs_per_query, location=location)
-            cache.save_jobs(jobs)
-            status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
-
-    if not jobs:
-        st.warning("No jobs found. Try adjusting your location or uploading a different CV.")
-        return
-
-    # ---- Step 5: Evaluate jobs -------------------------------------------
-    new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile)
-
-    if not new_jobs:
-        with st.status("✅ All evaluations loaded (cached)", state="complete"):
-            pass
-        all_evals = cached_evals
-    else:
-        if client is None:
-            client = create_client()
-
-        new_evaluated: list[EvaluatedJob] = []
-        progress_bar = st.progress(0, text=f"Evaluating 0/{len(new_jobs)} jobs…")
-
-        with ThreadPoolExecutor(max_workers=5) as executor:
-            futures = {
-                executor.submit(evaluate_job, client, profile, job): job
-                for job in new_jobs
-            }
-            for i, future in enumerate(as_completed(futures), 1):
-                job = futures[future]
-                evaluation = future.result()
-                new_evaluated.append(EvaluatedJob(job=job, evaluation=evaluation))
-                progress_bar.progress(
-                    i / len(new_jobs),
-                    text=f"Evaluated {i}/{len(new_jobs)} jobs…",
-                )
-
-        progress_bar.empty()
-
-        all_evals = dict(cached_evals)
-        for ej in new_evaluated:
-            key = f"{ej.job.title}|{ej.job.company_name}"
-            all_evals[key] = ej
-        cache.save_evaluations(profile, all_evals)
-
-    # Build final sorted list
-    evaluated_jobs = sorted(
-        all_evals.values(),
-        key=lambda x: x.evaluation.score,
-        reverse=True,
-    )
-    st.session_state.evaluated_jobs = evaluated_jobs
-
 
 # ---------------------------------------------------------------------------
 # Validate keys before running
@@ -313,21 +265,171 @@ def _keys_ok() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Run pipeline on button click
+# Eager CV processing — runs on every rerun where a file is uploaded
 # ---------------------------------------------------------------------------
-if run_button and uploaded_file is not None:
-    if _keys_ok():
-        try:
-            _run_pipeline()
-        except Exception as exc:
-            st.error(f"Pipeline error: {exc}")
+if uploaded_file is not None:
+    file_bytes = uploaded_file.getbuffer()
+    if len(file_bytes) > 5 * 1024 * 1024:
+        st.error("File exceeds 5 MB limit. Please upload a smaller file.")
+        st.stop()
 
-# ---------------------------------------------------------------------------
-# Display persisted state across reruns (when pipeline is NOT running)
-# ---------------------------------------------------------------------------
-elif st.session_state.profile is not None:
+    file_hash = hash(bytes(file_bytes))
+    if file_hash != st.session_state.cv_file_hash:
+        # New or changed file — extract text + profile
+        cv_text = _extract_uploaded_cv(uploaded_file)
+        st.session_state.cv_text = cv_text
+        st.session_state.cv_file_hash = file_hash
+        # Clear stale downstream state
+        st.session_state.profile = None
+        st.session_state.queries = None
+        st.session_state.evaluated_jobs = None
+
+# Capture button intent — profile may not be ready yet
+if run_button and uploaded_file is not None:
+    st.session_state.run_requested = True
+
+# Eager profile extraction — if we have CV text but no profile yet
+if st.session_state.cv_text and st.session_state.profile is None:
+    cache = _get_cache()
+    cached_profile = cache.load_profile(st.session_state.cv_text)
+    if cached_profile is not None:
+        st.session_state.profile = cached_profile
+    elif _keys_ok():
+        label = (
+            "🧠 Analyzing CV with AI… (job search will start automatically)"
+            if st.session_state.run_requested
+            else "🧠 Analyzing CV with AI…"
+        )
+        with st.status(label, expanded=False) as status:
+            client = create_client()
+            profile = profile_candidate(client, st.session_state.cv_text)
+            cache.save_profile(st.session_state.cv_text, profile)
+            st.session_state.profile = profile
+            status.update(label="✅ Profile extracted", state="complete")
+
+# Always render profile from session state when available
+if st.session_state.profile is not None:
     with profile_slot.container():
         _render_profile(st.session_state.profile)
+
+
+# ---------------------------------------------------------------------------
+# Main area
+# ---------------------------------------------------------------------------
+def _run_pipeline() -> None:
+    """Execute the pipeline from query generation onward.
+
+    CV parsing and profile extraction are handled eagerly on upload,
+    so this function starts at query generation.
+    """
+    profile = st.session_state.profile
+    if profile is None:
+        st.error("No candidate profile available. Please upload a CV first.")
+        return
+
+    cache = _get_cache()
+    client = None  # lazy — only created when needed
+
+    # ---- Step 1: Generate queries ----------------------------------------
+    with st.status("🔍 Generating search queries…", expanded=False) as status:
+        cached_queries = cache.load_queries(profile, location)
+        if cached_queries is not None:
+            queries = cached_queries
+            status.update(label="✅ Queries generated (cached)", state="complete")
+        else:
+            if client is None:
+                client = create_client()
+            queries = generate_search_queries(client, profile, location)
+            cache.save_queries(profile, location, queries)
+            status.update(label="✅ Queries generated", state="complete")
+    st.session_state.queries = queries
+
+    # ---- Step 2: Search for jobs -----------------------------------------
+    with st.status("🌐 Searching for jobs…", expanded=False) as status:
+        cached_jobs = cache.load_jobs()
+        if cached_jobs is not None:
+            jobs = cached_jobs
+            status.update(label=f"✅ Found {len(jobs)} jobs (cached)", state="complete")
+        else:
+            jobs = search_all_queries(queries, jobs_per_query=jobs_per_query, location=location)
+            cache.save_jobs(jobs)
+            status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
+
+    if not jobs:
+        st.warning("No jobs found. Try adjusting your location or uploading a different CV.")
+        return
+
+    # ---- Step 3: Evaluate jobs -------------------------------------------
+    new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile)
+
+    if not new_jobs:
+        with st.status("✅ All evaluations loaded (cached)", state="complete"):
+            pass
+        all_evals = cached_evals
+    else:
+        if client is None:
+            client = create_client()
+
+        all_evals = dict(cached_evals)
+        progress_bar = st.progress(0, text=f"Evaluating 0/{len(new_jobs)} jobs…")
+        results_slot = st.empty()
+
+        with ThreadPoolExecutor(max_workers=5) as executor:
+            futures = {
+                executor.submit(evaluate_job, client, profile, job): job
+                for job in new_jobs
+            }
+            for i, future in enumerate(as_completed(futures), 1):
+                job = futures[future]
+                evaluation = future.result()
+                ej = EvaluatedJob(job=job, evaluation=evaluation)
+                key = f"{ej.job.title}|{ej.job.company_name}"
+                all_evals[key] = ej
+                progress_bar.progress(
+                    i / len(new_jobs),
+                    text=f"Evaluated {i}/{len(new_jobs)} jobs…",
+                )
+                # Re-render all results so far, sorted by score
+                sorted_so_far = sorted(
+                    all_evals.values(),
+                    key=lambda x: x.evaluation.score,
+                    reverse=True,
+                )
+                with results_slot.container():
+                    for ev in sorted_so_far:
+                        _render_job_card(ev)
+
+        progress_bar.empty()
+        results_slot.empty()  # clear; final display section takes over
+        cache.save_evaluations(profile, all_evals)
+
+    # Build final sorted list
+    evaluated_jobs = sorted(
+        all_evals.values(),
+        key=lambda x: x.evaluation.score,
+        reverse=True,
+    )
+    st.session_state.evaluated_jobs = evaluated_jobs
+
+
+# ---------------------------------------------------------------------------
+# Run pipeline on button click
+# ---------------------------------------------------------------------------
+_RATE_LIMIT_SECONDS = 30
+
+if st.session_state.run_requested and st.session_state.profile is not None:
+    st.session_state.run_requested = False
+    elapsed = time.monotonic() - st.session_state.last_run_time
+    if elapsed < _RATE_LIMIT_SECONDS:
+        remaining = int(_RATE_LIMIT_SECONDS - elapsed)
+        st.warning(f"Please wait {remaining}s before running again.")
+    elif _keys_ok():
+        try:
+            st.session_state.last_run_time = time.monotonic()
+            _run_pipeline()
+        except Exception:
+            logger.exception("Pipeline error")
+            st.error("Something went wrong. Please try again or upload a different CV.")
 
 if not run_button and st.session_state.queries is not None:
     with st.expander(
@@ -408,30 +510,7 @@ if st.session_state.evaluated_jobs is not None:
         )
     else:
         for ej in filtered:
-            score = ej.evaluation.score
-            emoji = _score_emoji(score)
-            missing = ", ".join(ej.evaluation.missing_skills) if ej.evaluation.missing_skills else None
-
-            with st.container(border=True):
-                left, center, right = st.columns([0.6, 4, 1])
-
-                with left:
-                    st.markdown(f"## {emoji}")
-                    st.markdown(f"**{score}**/100")
-
-                with center:
-                    st.markdown(f"**{ej.job.title}** @ {ej.job.company_name}")
-                    st.caption(
-                        f"📍 {ej.job.location}"
-                        + (f"  •  🕐 {ej.job.posted_at}" if ej.job.posted_at else "")
-                    )
-                    st.markdown(ej.evaluation.reasoning)
-                    if missing:
-                        st.markdown(f"**Missing:** {missing}")
-
-                with right:
-                    if ej.job.link:
-                        st.link_button("Apply ↗", ej.job.link, use_container_width=True)
+            _render_job_card(ej)
 
 elif uploaded_file is None:
     # Landing page
