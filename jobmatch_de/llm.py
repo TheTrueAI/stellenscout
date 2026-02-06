@@ -13,7 +13,7 @@ from google.genai.errors import ServerError, ClientError
 MAX_RETRIES = 5
 BASE_DELAY = 3  # seconds
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3-flash-preview"
 
 
 def create_client() -> genai.Client:

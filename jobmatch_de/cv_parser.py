@@ -81,23 +81,3 @@ def _clean_text(text: str) -> str:
     return cleaned_text.strip()
 
 
-# Keep for backwards compatibility
-extract_text_from_pdf = extract_text
-
-
-def format_cv_as_markdown(cv_text: str) -> str:
-    """
-    Format extracted CV text as markdown for better LLM processing.
-
-    Args:
-        cv_text: Raw extracted text from CV.
-
-    Returns:
-        Markdown-formatted CV text.
-    """
-    return f"""# Candidate CV
-
-```
-{cv_text}
-```
-"""

@@ -63,7 +63,8 @@ def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
 def generate_search_queries(
     client: genai.Client,
     profile: CandidateProfile,
-    location: str = "Germany"
+    location: str = "Germany",
+    num_queries: int = 10,
 ) -> list[str]:
     """
     Generate optimized job search queries based on candidate profile.
@@ -84,11 +85,17 @@ def generate_search_queries(
 - Domain Expertise: {', '.join(profile.domain_expertise)}
 - Target Location: {location}"""
 
-    prompt = f"{HEADHUNTER_SYSTEM_PROMPT}\n\n{profile_text}"
+    prompt = (
+        f"{HEADHUNTER_SYSTEM_PROMPT}\n\n"
+        f"Generate exactly {num_queries} queries.\n\n"
+        f"{profile_text}"
+    )
 
     content = call_gemini(client, prompt, temperature=0.5, max_tokens=8192)
     queries = parse_json(content)
-    return queries
+    if isinstance(queries, list):
+        return queries[:num_queries]
+    return []
 
 
 def _parse_job_results(results: dict) -> list[JobListing]:

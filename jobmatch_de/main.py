@@ -9,9 +9,8 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich import print as rprint
 
-from .cv_parser import extract_text, format_cv_as_markdown
+from .cv_parser import extract_text
 from .llm import create_client
 from .search_agent import (
     profile_candidate,
@@ -137,6 +136,7 @@ Examples:
   jobmatch-de cv.pdf
   jobmatch-de cv.pdf --location Berlin
   jobmatch-de cv.pdf --min-score 80 --jobs-per-query 10
+    jobmatch-de cv.pdf --num-queries 5
   jobmatch-de cv.pdf --no-cache
         """,
     )
@@ -165,6 +165,12 @@ Examples:
         help="Number of jobs to fetch per search query (default: 10)",
     )
     parser.add_argument(
+        "--num-queries",
+        type=int,
+        default=10,
+        help="Number of search queries to generate (default: 10)",
+    )
+    parser.add_argument(
         "--no-cache",
         action="store_true",
         help="Ignore cache and force a fresh run",
@@ -173,6 +179,7 @@ Examples:
     args = parser.parse_args()
 
     cache = ResultCache() if not args.no_cache else None
+    client = None  # lazy — create only when needed
 
     # Header
     console.print()
@@ -216,12 +223,6 @@ Examples:
 
         display_profile(profile)
 
-        # Ensure client exists for non-cached steps
-        if not cached_profile:
-            pass  # client already created above
-        else:
-            client = None  # lazy — only create if needed later
-
         # Step 3: Generate search queries
         with Progress(
             SpinnerColumn(),
@@ -236,7 +237,12 @@ Examples:
                 task = progress.add_task("Generating search queries...", total=None)
                 if client is None:
                     client = create_client()
-                queries = generate_search_queries(client, profile, args.location)
+                queries = generate_search_queries(
+                    client,
+                    profile,
+                    args.location,
+                    num_queries=args.num_queries,
+                )
                 if cache:
                     cache.save_queries(profile, args.location, queries)
                 progress.update(task, description="[green]✓[/green] Queries generated")
