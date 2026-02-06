@@ -1,4 +1,4 @@
-"""Pydantic models for JobMatch-DE data structures."""
+"""Pydantic models for StellenScout data structures."""
 
 from typing import Literal
 from pydantic import BaseModel, Field

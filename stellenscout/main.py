@@ -1,4 +1,4 @@
-"""Main orchestrator for JobMatch-DE CLI."""
+"""Main orchestrator for StellenScout CLI."""
 
 import argparse
 import sys
@@ -127,17 +127,17 @@ def display_results(evaluated_jobs: list[EvaluatedJob], min_score: int) -> None:
 
 
 def main() -> int:
-    """Main entry point for JobMatch-DE CLI."""
+    """Main entry point for StellenScout CLI."""
     parser = argparse.ArgumentParser(
-        description="JobMatch-DE: AI-powered job matching for the German market",
+        description="StellenScout: AI-powered job matching for the European market",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  jobmatch-de cv.pdf
-  jobmatch-de cv.pdf --location Berlin
-  jobmatch-de cv.pdf --min-score 80 --jobs-per-query 10
-    jobmatch-de cv.pdf --num-queries 5
-  jobmatch-de cv.pdf --no-cache
+  stellenscout cv.pdf
+  stellenscout cv.pdf --location "Munich, Germany"
+  stellenscout cv.pdf --location "Paris, France"
+  stellenscout cv.pdf --min-score 80 --jobs-per-query 10
+  stellenscout cv.pdf --no-cache
         """,
     )
 
@@ -149,8 +149,8 @@ Examples:
     parser.add_argument(
         "--location", "-l",
         type=str,
-        default="Germany",
-        help="Target job location (default: Germany)",
+        default="",
+        help="Target job location (e.g., 'Munich, Germany', 'Paris, France')",
     )
     parser.add_argument(
         "--min-score", "-s",
@@ -185,8 +185,8 @@ Examples:
     console.print()
     console.print(
         Panel.fit(
-            "[bold blue]JobMatch-DE[/bold blue]\n"
-            "[dim]AI-powered job matching for Germany[/dim]",
+            "[bold blue]StellenScout[/bold blue]\n"
+            "[dim]AI-powered job matching for Europe[/dim]",
             border_style="blue",
         )
     )

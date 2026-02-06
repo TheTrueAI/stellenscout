@@ -3,16 +3,16 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jobmatch-de"
+name = "stellenscout"
 version = "0.1.0"
-description = "AI-powered job matching CLI for the German market"
+description = "AI-powered job matching CLI for the European market"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
 authors = [
     {name = "Adrian"}
 ]
-keywords = ["job-search", "germany", "ai", "cli", "gemini"]
+keywords = ["job-search", "europe", "ai", "cli", "gemini"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
@@ -34,7 +34,7 @@ dependencies = [
 ]
 
 [project.scripts]
-jobmatch-de = "jobmatch_de.main:cli"
+stellenscout = "stellenscout.main:cli"
 
 [project.optional-dependencies]
 ui = [
@@ -49,7 +49,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["jobmatch_de*"]
+include = ["stellenscout*"]
 
 [tool.ruff]
 line-length = 100

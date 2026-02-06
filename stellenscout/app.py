@@ -1,4 +1,4 @@
-"""Streamlit web UI for JobMatch-DE."""
+"""Streamlit web UI for StellenScout."""
 
 import logging
 import os
@@ -16,7 +16,7 @@ jobs_per_query = 10  # default value
 
 # ---------------------------------------------------------------------------
 # Inject API keys from Streamlit secrets into env vars
-# (must happen before any jobmatch_de imports that read env vars)
+# (must happen before any stellenscout imports that read env vars)
 # ---------------------------------------------------------------------------
 for key in ("GOOGLE_API_KEY", "SERPAPI_KEY"):
     if key not in os.environ:
@@ -25,23 +25,23 @@ for key in ("GOOGLE_API_KEY", "SERPAPI_KEY"):
         except (KeyError, FileNotFoundError):
             pass  # handled later via validation
 
-from jobmatch_de.cv_parser import extract_text, SUPPORTED_EXTENSIONS  # noqa: E402
-from jobmatch_de.llm import create_client  # noqa: E402
-from jobmatch_de.search_agent import (  # noqa: E402
+from stellenscout.cv_parser import extract_text, SUPPORTED_EXTENSIONS  # noqa: E402
+from stellenscout.llm import create_client  # noqa: E402
+from stellenscout.search_agent import (  # noqa: E402
     profile_candidate,
     generate_search_queries,
     search_all_queries,
 )
-from jobmatch_de.evaluator_agent import evaluate_job  # noqa: E402
-from jobmatch_de.models import CandidateProfile, EvaluatedJob  # noqa: E402
-from jobmatch_de.cache import ResultCache  # noqa: E402
+from stellenscout.evaluator_agent import evaluate_job  # noqa: E402
+from stellenscout.models import CandidateProfile, EvaluatedJob  # noqa: E402
+from stellenscout.cache import ResultCache  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Page configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="JobMatch-DE",
-    page_icon="🇩🇪",
+    page_title="StellenScout",
+    page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -68,7 +68,7 @@ for k, v in _DEFAULTS.items():
 # ---------------------------------------------------------------------------
 # Cache scoped to this browser session
 # ---------------------------------------------------------------------------
-CACHE_ROOT = Path(".jobmatch_cache")
+CACHE_ROOT = Path(".stellenscout_cache")
 
 
 def _get_cache() -> ResultCache:
@@ -116,8 +116,8 @@ if "cleanup_done" not in st.session_state:
 # Sidebar — inputs
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.title("🇩🇪 JobMatch-DE")
-    st.caption("AI-powered job matching for Germany")
+    st.title("🔍 StellenScout")
+    st.caption("AI-powered job matching for Europe")
     st.divider()
 
     uploaded_file = st.file_uploader(
@@ -516,12 +516,12 @@ elif uploaded_file is None:
     # Landing page
     st.markdown(
         """
-        ## 🇩🇪 Welcome to JobMatch-DE
+        ## 🔍 Welcome to StellenScout
 
-        **AI-powered job matching for the German market.**
+        **AI-powered job matching for the European market.**
 
         1. **Upload your CV** (PDF, DOCX, Markdown, or TXT) in the sidebar
-        2. **Choose your target location** (e.g., Munich, Berlin, Remote)
+        2. **Choose your target location** (e.g., Munich, Paris, Amsterdam)
         3. **Click "Find Jobs"** and let AI match you with the best openings
 
         Your CV is analyzed by Gemini AI, relevant jobs are fetched from

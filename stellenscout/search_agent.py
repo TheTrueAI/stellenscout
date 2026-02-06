@@ -8,7 +8,7 @@ from .models import CandidateProfile, JobListing
 from .llm import call_gemini, parse_json
 
 # System prompt for the Profiler agent
-PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep knowledge of the German job market.
+PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep knowledge of European job markets.
 You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
 
 Be THOROUGH — capture everything relevant. Do not summarize away important details.
@@ -17,8 +17,8 @@ Return a JSON object with:
 - "skills": List of ALL hard skills, tools, frameworks, methodologies, and technical competencies mentioned. Include specific tools (e.g., "SAP", "Power BI"), standards (e.g., "ISO 14064", "GHG Protocol"), and methods. Aim for 15-20 items.
 - "experience_level": One of "Junior" (<2 years), "Mid" (2-5 years), "Senior" (5-10 years), "Lead" (10+ years), "CTO".
 - "years_of_experience": (int) Total years of professional experience. Calculate from work history dates.
-- "roles": List of 5 job titles the candidate is suited for, ordered from most to least specific. Include both English and German titles where relevant.
-- "languages": List of spoken languages with proficiency level (e.g., "German B2", "English Native", "Urdu Native").
+- "roles": List of 5 job titles the candidate is suited for, ordered from most to least specific. Include both English and local-language titles where relevant.
+- "languages": List of spoken languages with proficiency level (e.g., "German B2", "English Native", "French C1").
 - "domain_expertise": List of all industries and domains the candidate has worked in.
 - "certifications": List of professional certifications, accreditations, or licenses (e.g., "PMP", "AWS Solutions Architect"). Empty list if none.
 - "education": List of degrees with field of study (e.g., "MSc Environmental Engineering", "BSc Computer Science"). Include the university name if mentioned.
@@ -27,19 +27,19 @@ Return a JSON object with:
 Return ONLY valid JSON, no markdown or explanation."""
 
 # System prompt for the Headhunter agent
-HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 10 distinct search queries to find relevant job openings in Germany.
+HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 10 distinct search queries to find relevant job openings in Europe.
 
 IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
 
 Strategy for MAXIMUM coverage:
 - Generate a MIX of broad and specific queries
-- Include BOTH English and German job titles (e.g., "Consultant München" AND "Berater München")
+- Include BOTH English and local-language job titles for the target country
 - Include some queries WITHOUT a city to find remote/nationwide jobs
 - Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
-- Include 1-2 broad industry/domain queries (e.g., "Nachhaltigkeit München", "ESG Germany")
+- Include 1-2 broad industry/domain queries
 
 Return ONLY a JSON array of 10 search query strings, no explanation.
-Example: ["Python Developer Berlin", "Backend Engineer Berlin", "Softwareentwickler Berlin", "Developer remote Germany", "Entwickler Berlin", "Software Engineer", "IT Berater Berlin", "Cloud Engineer Berlin", "DevOps Berlin", "Programmierer Berlin"]"""
+Example: ["Python Developer Munich", "Backend Engineer Amsterdam", "Software Engineer Paris", "Developer remote", "Cloud Engineer", "DevOps Berlin", "Data Scientist", "IT Consultant", "Full Stack Developer", "Machine Learning Engineer"]"""
 
 
 def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
@@ -63,7 +63,7 @@ def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
 def generate_search_queries(
     client: genai.Client,
     profile: CandidateProfile,
-    location: str = "Germany",
+    location: str = "",
     num_queries: int = 10,
 ) -> list[str]:
     """
@@ -114,7 +114,7 @@ def _parse_job_results(results: dict) -> list[JobListing]:
         job = JobListing(
             title=job_data.get("title", "Unknown"),
             company_name=job_data.get("company_name", "Unknown"),
-            location=job_data.get("location", "Germany"),
+            location=job_data.get("location", "Unknown"),
             description="\n".join(description_parts),
             link=job_data.get("share_link", job_data.get("link", "")),
             posted_at=job_data.get("detected_extensions", {}).get("posted_at", ""),
@@ -146,7 +146,6 @@ def search_jobs(query: str, num_results: int = 10) -> list[JobListing]:
         params = {
             "engine": "google_jobs",
             "q": query,
-            "gl": "de",  # Germany
             "hl": "en",  # English results
             "api_key": api_key,
         }
@@ -174,7 +173,7 @@ def search_jobs(query: str, num_results: int = 10) -> list[JobListing]:
 def search_all_queries(
     queries: list[str],
     jobs_per_query: int = 10,
-    location: str = "Germany",
+    location: str = "",
 ) -> list[JobListing]:
     """
     Search for jobs across multiple queries and deduplicate results.
@@ -189,20 +188,16 @@ def search_all_queries(
     Returns:
         Deduplicated list of job listings.
     """
-    # Common German city names / location keywords for detection
-    _LOCATION_KEYWORDS = {
-        "berlin", "münchen", "munich", "hamburg", "frankfurt", "köln", "cologne",
-        "düsseldorf", "stuttgart", "dortmund", "essen", "leipzig", "bremen",
-        "dresden", "hannover", "nürnberg", "nuremberg", "germany", "deutschland",
-        "remote",
-    }
+    # Build location keywords dynamically from the user's location string
+    _location_words = {w.lower() for w in location.split() if len(w) >= 3}
+    _location_words.add("remote")
 
     all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
 
     for query in queries:
         # If the query doesn't already mention a location, append one
         query_lower = query.lower()
-        has_location = any(kw in query_lower for kw in _LOCATION_KEYWORDS)
+        has_location = any(kw in query_lower for kw in _location_words)
         search_query = query if has_location else f"{query} {location}"
 
         jobs = search_jobs(search_query, num_results=jobs_per_query)

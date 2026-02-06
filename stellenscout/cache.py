@@ -1,4 +1,4 @@
-"""JSON file cache for JobMatch-DE pipeline results."""
+"""JSON file cache for StellenScout pipeline results."""
 
 import hashlib
 import json
@@ -7,7 +7,7 @@ from pathlib import Path
 
 from .models import CandidateProfile, JobListing, JobEvaluation, EvaluatedJob
 
-DEFAULT_CACHE_DIR = Path(".jobmatch_cache")
+DEFAULT_CACHE_DIR = Path(".stellenscout_cache")
 
 
 def _hash(text: str) -> str:

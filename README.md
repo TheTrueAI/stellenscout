@@ -1,14 +1,14 @@
-# JobMatch-DE
+# StellenScout
 
-AI-powered job matching for the German market. Upload your CV, and the app uses Google Gemini to analyze your profile, searches for relevant jobs via Google Jobs, and scores each listing against your skills and experience.
+AI-powered job matching for the European market. Upload your CV, and the app uses Google Gemini to analyze your profile, searches for relevant jobs via Google Jobs, and scores each listing against your skills and experience.
 
 ## Features
 
 - **CV Parsing** - Supports PDF, DOCX, Markdown, and plain text
 - **AI Profile Extraction** - Gemini analyzes your CV to extract skills, experience, languages, and more
-- **Smart Search** - Generates optimized search queries in both English and German
+- **Smart Search** - Generates optimized search queries in English and local languages
 - **Job Scoring** - Each job is scored 0-100 against your profile with detailed reasoning
-- **German Market Focus** - Accounts for German language requirements, location keywords, and market norms
+- **European Market Focus** - Accounts for local language requirements, location keywords, and market norms
 - **Caching** - Intelligent caching minimizes API calls across sessions
 
 ## Quick Start
@@ -22,8 +22,8 @@ AI-powered job matching for the German market. Upload your CV, and the app uses 
 ### Setup
 
 ```bash
-git clone https://github.com/<your-username>/jobmatch-de.git
-cd jobmatch-de
+git clone https://github.com/<your-username>/stellenscout.git
+cd stellenscout
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[ui]"
@@ -39,26 +39,15 @@ cp .env.example .env
 ### Run the Streamlit App
 
 ```bash
-streamlit run jobmatch_de/app.py
+streamlit run stellenscout/app.py
 ```
 
 ### Run the CLI
 
 ```bash
-jobmatch-de path/to/your-cv.pdf --location "Munich"
+stellenscout path/to/your-cv.pdf --location "Munich, Germany"
+stellenscout path/to/your-cv.pdf --location "Paris, France"
 ```
-
-## Deploy on Streamlit Community Cloud
-
-1. Push this repo to GitHub
-2. Go to [share.streamlit.io](https://share.streamlit.io) and connect your GitHub account
-3. Select this repo and set the main file path to `jobmatch_de/app.py`
-4. In **Advanced settings > Secrets**, add:
-   ```toml
-   GOOGLE_API_KEY = "your-google-api-key"
-   SERPAPI_KEY = "your-serpapi-key"
-   ```
-5. Deploy
 
 ## How It Works
 
@@ -73,7 +62,7 @@ Jobs are fetched from Google Jobs via SerpApi, deduplicated, and scored in paral
 ## Project Structure
 
 ```
-jobmatch_de/
+stellenscout/
   app.py              # Streamlit web UI
   main.py             # CLI entry point
   llm.py              # Gemini client and retry logic

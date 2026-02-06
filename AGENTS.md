@@ -1,6 +1,6 @@
 # Agent Architectures
 
-This document defines the persona, context, and instruction sets for the AI agents used in JobMatch-DE.
+This document defines the persona, context, and instruction sets for the AI agents used in StellenScout.
 
 **LLM Provider:** Google AI Studio (Gemini)
 **Model:** gemini-2.5-flash
@@ -15,7 +15,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 **Output:** A structured JSON summary of the candidate.
 
 **System Prompt:**
-> You are an expert technical recruiter with deep knowledge of the German job market.
+> You are an expert technical recruiter with deep knowledge of European job markets.
 > You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
 >
 > Be THOROUGH — capture everything relevant. Do not summarize away important details.
@@ -24,7 +24,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 > - `skills`: List of ALL hard skills, tools, frameworks, methodologies, and technical competencies mentioned. Aim for 15-20 items.
 > - `experience_level`: One of "Junior" (<2 years), "Mid" (2-5 years), "Senior" (5-10 years), "Lead" (10+ years), "CTO".
 > - `years_of_experience`: (int) Total years of professional experience. Calculate from work history dates.
-> - `roles`: List of 5 job titles the candidate is suited for, ordered most to least specific. Include both English and German titles.
+> - `roles`: List of 5 job titles the candidate is suited for, ordered most to least specific. Include both English and local-language titles.
 > - `languages`: List of spoken languages with proficiency level (e.g., "German B2", "English Native").
 > - `domain_expertise`: List of all industries and domains the candidate has worked in.
 > - `certifications`: List of professional certifications, accreditations, or licenses. Empty list if none.
@@ -40,17 +40,17 @@ This document defines the persona, context, and instruction sets for the AI agen
 ## 2. The Headhunter (Search Query Generator)
 
 **Role:** Search Engine Optimization Specialist
-**Input:** The "Profiler" JSON summary + User's desired location (e.g., "Munich").
+**Input:** The "Profiler" JSON summary + User's desired location (e.g., "Munich, Germany").
 **Output:** A JSON array of 10 search query strings optimized for Google Jobs.
 
 **System Prompt:**
-> You are a Search Specialist. Based on the candidate's profile and location, generate 10 distinct search queries to find relevant job openings in Germany.
+> You are a Search Specialist. Based on the candidate's profile and location, generate 10 distinct search queries to find relevant job openings in Europe.
 >
 > IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
 >
 > Strategy for MAXIMUM coverage:
 > - Generate a MIX of broad and specific queries
-> - Include BOTH English and German job titles
+> - Include BOTH English and local-language job titles
 > - Include some queries WITHOUT a city to find remote/nationwide jobs
 > - Use different synonyms for the same role
 > - Include 1-2 broad industry/domain queries
@@ -59,7 +59,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 - Temperature: 0.5
 - Max tokens: 8192
 
-**Post-processing:** Queries missing a location keyword (German city names, "Germany", "remote") get the target location auto-appended before searching.
+**Post-processing:** Queries missing a location keyword (words from the user's location string, or "remote") get the target location auto-appended before searching.
 
 ---
 
@@ -81,8 +81,8 @@ This document defines the persona, context, and instruction sets for the AI agen
 > - **50-79:** Potential fit. Strong skills but junior/senior mismatch or missing a key framework.
 > - **0-49:** Hard pass. Wrong stack, wrong language, or wrong role entirely.
 >
-> **Critical constraints for Germany:**
-> - If the job requires "Fließend Deutsch" or similar German fluency and the candidate only speaks English or has low German proficiency (A1/A2), the score must be capped at 30.
+> **Critical constraints:**
+> - If the job requires fluency in a local language (e.g., German, French, Dutch) and the candidate lacks that proficiency (A1/A2 or not listed), the score must be capped at 30.
 > - Pay attention to visa/work permit requirements if mentioned.
 
 **Generation Config:**
@@ -106,7 +106,6 @@ BASE_DELAY = 3  # seconds, exponential backoff with jitter
 # SerpApi Google Jobs parameters
 SERPAPI_PARAMS = {
     "engine": "google_jobs",
-    "gl": "de",           # Country: Germany
     "hl": "en",           # Language: English (for broader results)
 }
 # Pagination uses next_page_token (not deprecated 'start' parameter)
@@ -127,7 +126,7 @@ class CandidateProfile(BaseModel):
     skills: list[str]                    # 15-20 hard skills
     experience_level: Literal["Junior", "Mid", "Senior", "Lead", "CTO"]
     years_of_experience: int             # calculated from work history
-    roles: list[str]                     # 5 titles, EN+DE
+    roles: list[str]                     # 5 titles, EN + local language
     languages: list[str]                 # with proficiency levels
     domain_expertise: list[str]
     certifications: list[str]            # empty list if none
@@ -156,10 +155,10 @@ class EvaluatedJob(BaseModel):
 
 ## 6. Caching (`cache.py`)
 
-All pipeline results are cached to JSON in `.jobmatch_cache/` to minimize API usage across runs.
+All pipeline results are cached to JSON in `.stellenscout_cache/` to minimize API usage across runs.
 
 ```
-.jobmatch_cache/
+.stellenscout_cache/
 ├── profile.json       # keyed by CV hash (SHA-256)
 ├── queries.json       # keyed by profile hash + location
 ├── jobs.json          # date-stamped, merged with existing jobs
@@ -179,11 +178,11 @@ All pipeline results are cached to JSON in `.jobmatch_cache/` to minimize API us
 ## 7. Interfaces
 
 ### CLI (`main.py`)
-- Entry point: `jobmatch-de <cv_path> [--location] [--min-score] [--jobs-per-query] [--no-cache]`
+- Entry point: `stellenscout <cv_path> [--location] [--min-score] [--jobs-per-query] [--no-cache]`
 - Rich terminal UI with spinners, colored tables, and detailed match view
 
 ### Streamlit Web UI (`app.py`)
-- Session-scoped cache directories under `.jobmatch_cache/<session_id>/`
+- Session-scoped cache directories under `.stellenscout_cache/<session_id>/`
 - Auto-cleanup of session caches older than 24 hours
 - Sidebar: CV upload, location, min score, jobs per query
 - Main area: profile display, search queries, filterable/sortable results table, job detail expanders

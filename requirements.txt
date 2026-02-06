@@ -1,4 +1,4 @@
-# JobMatch-DE Dependencies
+# StellenScout Dependencies
 # Python 3.10+ required
 
 # PDF parsing
