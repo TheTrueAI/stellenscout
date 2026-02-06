@@ -5,7 +5,8 @@
       "Bash(source .venv/bin/activate)",
       "Bash(pip install:*)",
       "Bash(jobmatch-de:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "mcp__ide__getDiagnostics"
     ]
   }
 }

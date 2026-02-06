@@ -18,3 +18,7 @@ rich>=13.7.0
 
 # Environment management
 python-dotenv>=1.0.0
+
+# Web UI (optional)
+streamlit>=1.30.0
+pandas>=2.0.0
