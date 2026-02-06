@@ -25,6 +25,10 @@ for key in ("GOOGLE_API_KEY", "SERPAPI_KEY"):
         except (KeyError, FileNotFoundError):
             pass  # handled later via validation
 
+import sys as _sys  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 from stellenscout.cv_parser import extract_text, SUPPORTED_EXTENSIONS  # noqa: E402
 from stellenscout.llm import create_client  # noqa: E402
 from stellenscout.search_agent import (  # noqa: E402
