@@ -41,3 +41,6 @@ Thumbs.db
 output/
 *cv*.md
 .jobmatch_cache/
+
+# Streamlit secrets (contains API keys)
+.streamlit/secrets.toml
