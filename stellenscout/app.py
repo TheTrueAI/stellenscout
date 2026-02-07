@@ -1,9 +1,9 @@
 """Streamlit web UI for StellenScout."""
 
+import hashlib
 import logging
 import os
 import time
-import uuid
 import tempfile
 import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -56,7 +56,6 @@ st.set_page_config(
 logger = logging.getLogger(__name__)
 
 _DEFAULTS = {
-    "session_id": str(uuid.uuid4()),
     "profile": None,
     "queries": None,
     "evaluated_jobs": None,
@@ -75,14 +74,16 @@ for k, v in _DEFAULTS.items():
 CACHE_ROOT = Path(".stellenscout_cache")
 
 
+def _cv_file_hash(data: bytes) -> str:
+    """Return a stable SHA-256 hex digest for CV file content."""
+    return hashlib.sha256(data).hexdigest()[:16]
+
+
 def _get_cache() -> ResultCache:
-    sid = st.session_state.session_id
-    try:
-        uuid.UUID(sid)
-    except (ValueError, AttributeError):
-        sid = str(uuid.uuid4())
-        st.session_state.session_id = sid
-    return ResultCache(cache_dir=CACHE_ROOT / sid)
+    cv_hash = st.session_state.cv_file_hash
+    if not cv_hash:
+        cv_hash = "default"
+    return ResultCache(cache_dir=CACHE_ROOT / cv_hash)
 
 
 def _cleanup_old_sessions(
@@ -91,10 +92,11 @@ def _cleanup_old_sessions(
     """Delete session cache dirs older than *max_age_hours* and cap total count."""
     if not CACHE_ROOT.exists():
         return
+    current = st.session_state.cv_file_hash or ""
     cutoff = datetime.now() - timedelta(hours=max_age_hours)
     dirs: list[tuple[float, Path]] = []
     for child in CACHE_ROOT.iterdir():
-        if child.is_dir() and child.name != st.session_state.session_id:
+        if child.is_dir() and child.name != current:
             try:
                 mtime_ts = child.stat().st_mtime
                 mtime = datetime.fromtimestamp(mtime_ts)
@@ -277,7 +279,7 @@ if uploaded_file is not None:
         st.error("File exceeds 5 MB limit. Please upload a smaller file.")
         st.stop()
 
-    file_hash = hash(bytes(file_bytes))
+    file_hash = _cv_file_hash(bytes(file_bytes))
     if file_hash != st.session_state.cv_file_hash:
         # New or changed file — extract text + profile
         cv_text = _extract_uploaded_cv(uploaded_file)
