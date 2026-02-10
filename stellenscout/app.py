@@ -391,7 +391,7 @@ def _run_pipeline() -> None:
         progress_bar = st.progress(0, text=f"Evaluating 0/{len(new_jobs)} jobs…")
         results_slot = st.empty()
 
-        with ThreadPoolExecutor(max_workers=5) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             futures = {
                 executor.submit(evaluate_job, client, profile, job): job
                 for job in new_jobs

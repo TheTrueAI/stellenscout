@@ -89,7 +89,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 - Temperature: 0.2 (low for consistent scoring)
 - Max tokens: 8192
 
-**Execution:** Jobs are evaluated in parallel using `ThreadPoolExecutor(max_workers=5)` with thread-safe progress tracking. On API errors, a fallback score of 50 is assigned.
+**Execution:** Jobs are evaluated in parallel using `ThreadPoolExecutor(max_workers=10)` with thread-safe progress tracking. On API errors, a fallback score of 50 is assigned.
 
 ---
 
