@@ -167,8 +167,8 @@ Examples:
     parser.add_argument(
         "--num-queries",
         type=int,
-        default=10,
-        help="Number of search queries to generate (default: 10)",
+        default=20,
+        help="Number of search queries to generate (default: 20)",
     )
     parser.add_argument(
         "--no-cache",

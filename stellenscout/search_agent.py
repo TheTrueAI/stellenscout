@@ -159,21 +159,24 @@ Return a JSON object with:
 Return ONLY valid JSON, no markdown or explanation."""
 
 # System prompt for the Headhunter agent
-HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 10 distinct search queries to find relevant job openings in Europe.
+HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings in Europe.
 
 IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
 
 CRITICAL: Always use LOCAL city names, not English ones. For example use "München" not "Munich", "Köln" not "Cologne", "Wien" not "Vienna", "Zürich" not "Zurich", "Praha" not "Prague".
 
-Strategy for MAXIMUM coverage:
-- Generate a MIX of broad and specific queries
-- Include BOTH English and local-language job titles for the target country
-- Include some very few queries WITHOUT a city to find remote/nationwide jobs
-- Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
-- Include 1-2 broad industry/domain queries
+ORDER queries from MOST SPECIFIC to MOST GENERAL — this is critical:
+1. Queries 1-5: Exact role titles + local city name (e.g. "Carbon Accounting Manager München")
+2. Queries 6-10: Broader role synonyms + city (e.g. "Sustainability Consultant München")
+3. Queries 11-15: Industry/domain keywords without city or with "remote" (e.g. "ESG Analyst remote")
+4. Queries 16-20: Very broad industry terms (e.g. "Environmental Engineer", "Data Analyst")
 
-Return ONLY a JSON array of 10 search query strings, no explanation.
-Example: ["Python Developer Munich", "Backend Engineer Amsterdam", "Software Engineer Paris", "Developer remote", "Cloud Engineer", "DevOps Berlin", "Data Scientist", "IT Consultant", "Full Stack Developer", "Machine Learning Engineer"]"""
+Additional strategy:
+- Include BOTH English and local-language job titles for the target country
+- Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
+
+Return ONLY a JSON array of 20 search query strings, no explanation.
+Example: ["Carbon Accounting Manager München", "Sustainability Manager München", "ESG Manager München", "Climate Analyst München", "Nachhaltigkeitsmanager München", "Sustainability Consultant München", "Environmental Manager München", "CSR Manager München", "Green Finance München", "Umweltberater München", "ESG Analyst remote", "Carbon Footprint Analyst", "Sustainability Analyst remote", "Climate Risk Analyst", "GHG Protocol Specialist", "Environmental Engineer", "Data Analyst Sustainability", "ESG Reporting", "Corporate Sustainability", "Environmental Consultant"]"""
 
 
 def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
@@ -198,7 +201,7 @@ def generate_search_queries(
     client: genai.Client,
     profile: CandidateProfile,
     location: str = "",
-    num_queries: int = 5,
+    num_queries: int = 20,
 ) -> list[str]:
     """
     Generate optimized job search queries based on candidate profile.
@@ -327,16 +330,21 @@ def search_all_queries(
     queries: list[str],
     jobs_per_query: int = 10,
     location: str = "",
+    min_unique_jobs: int = 50,
 ) -> list[JobListing]:
     """
     Search for jobs across multiple queries and deduplicate results.
     Queries without a location keyword get the location appended automatically,
     since Google Jobs returns nothing without geographic context.
 
+    Stops early once *min_unique_jobs* unique listings have been collected,
+    saving SerpAPI calls for candidates in active markets.
+
     Args:
         queries: List of search queries.
         jobs_per_query: Number of jobs to fetch per query.
         location: Target location to append to queries missing one.
+        min_unique_jobs: Stop after collecting this many unique jobs (0 to disable).
 
     Returns:
         Deduplicated list of job listings.
@@ -372,5 +380,8 @@ def search_all_queries(
             key = f"{job.title}|{job.company_name}"
             if key not in all_jobs:
                 all_jobs[key] = job
+
+        if min_unique_jobs and len(all_jobs) >= min_unique_jobs:
+            break
 
     return list(all_jobs.values())
