@@ -36,7 +36,7 @@ from stellenscout.search_agent import (  # noqa: E402
     generate_search_queries,
     search_all_queries,
 )
-from stellenscout.evaluator_agent import evaluate_job  # noqa: E402
+from stellenscout.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from stellenscout.models import CandidateProfile, EvaluatedJob  # noqa: E402
 from stellenscout.cache import ResultCache  # noqa: E402
 
@@ -59,6 +59,7 @@ _DEFAULTS = {
     "profile": None,
     "queries": None,
     "evaluated_jobs": None,
+    "summary": None,
     "cv_text": None,
     "cv_file_hash": None,
     "last_run_time": 0.0,
@@ -300,6 +301,7 @@ if uploaded_file is not None:
         st.session_state.profile = None
         st.session_state.queries = None
         st.session_state.evaluated_jobs = None
+        st.session_state.summary = None
 
 # Capture button intent — profile may not be ready yet
 if run_button and uploaded_file is not None:
@@ -428,6 +430,14 @@ def _run_pipeline() -> None:
     )
     st.session_state.evaluated_jobs = evaluated_jobs
 
+    # ---- Step 4: Generate career summary ------------------------------------
+    with st.status("📊 Generating career summary…", expanded=False) as status:
+        if client is None:
+            client = create_client()
+        summary = generate_summary(client, profile, evaluated_jobs)
+        st.session_state.summary = summary
+        status.update(label="✅ Career summary ready", state="complete")
+
 
 # ---------------------------------------------------------------------------
 # Run pipeline on button click
@@ -463,6 +473,11 @@ if st.session_state.evaluated_jobs is not None:
     evaluated_jobs: list[EvaluatedJob] = st.session_state.evaluated_jobs
 
     st.divider()
+
+    if st.session_state.summary is not None:
+        with st.expander("📊 **Market Summary & Career Advice**", expanded=True):
+            st.markdown(st.session_state.summary)
+
     st.subheader("🎯 Job Matches")
 
     # -- Filter controls ---------------------------------------------------

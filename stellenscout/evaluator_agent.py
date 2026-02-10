@@ -1,6 +1,7 @@
 """Evaluator Agent module - Scores job listings against CV using LLM."""
 
 import threading
+from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from google import genai
 from google.genai.errors import ServerError, ClientError
@@ -150,3 +151,91 @@ def filter_good_matches(
         Filtered list of jobs with score >= min_score.
     """
     return [ej for ej in evaluated_jobs if ej.evaluation.score >= min_score]
+
+
+# ---------------------------------------------------------------------------
+# Career advisor summary
+# ---------------------------------------------------------------------------
+
+ADVISOR_SYSTEM_PROMPT = """You are a career advisor. Given a candidate profile and their evaluated job matches, write a very brief summary. Use a friendly and encouraging tone, but be honest about the fit. Focus on actionable insights.
+Use emojis to make it more engaging.
+
+Structure your response in plain text with these sections:
+1. **Market Overview** (2-3 sentences): How well does this candidate fit the current job market? How many strong matches vs weak ones?
+2. **Skill Gaps** (bullet list): The most frequently missing skills across job listings. Prioritise by how often they appear.
+3. **Career Advice** (2-3 sentences): Actionable next steps — certifications to pursue, skills to learn, or positioning tips.
+
+Be concise and specific to THIS candidate. Use markdown formatting."""
+
+
+def generate_summary(
+    client: genai.Client,
+    profile: CandidateProfile,
+    evaluated_jobs: list[EvaluatedJob],
+) -> str:
+    """Generate a career-advice summary from the candidate profile and evaluated jobs.
+
+    Args:
+        client: Gemini client instance.
+        profile: Candidate's structured profile.
+        evaluated_jobs: All evaluated jobs, sorted by score descending.
+
+    Returns:
+        Markdown-formatted summary string.
+    """
+    # Score distribution
+    bins = {"≥80": 0, "70-79": 0, "50-69": 0, "<50": 0}
+    for ej in evaluated_jobs:
+        s = ej.evaluation.score
+        if s >= 80:
+            bins["≥80"] += 1
+        elif s >= 70:
+            bins["70-79"] += 1
+        elif s >= 50:
+            bins["50-69"] += 1
+        else:
+            bins["<50"] += 1
+
+    # Missing skills frequency
+    skill_counts: Counter[str] = Counter()
+    for ej in evaluated_jobs:
+        for skill in ej.evaluation.missing_skills:
+            skill_counts[skill] += 1
+    top_missing = skill_counts.most_common(10)
+
+    # Top matches (up to 10)
+    top_matches = evaluated_jobs[:10]
+    matches_text = "\n".join(
+        f"- {ej.job.title} @ {ej.job.company_name} — score {ej.evaluation.score}/100 — "
+        f"{ej.evaluation.reasoning}"
+        + (f" (missing: {', '.join(ej.evaluation.missing_skills)})" if ej.evaluation.missing_skills else "")
+        for ej in top_matches
+    )
+
+    missing_text = "\n".join(
+        f"- {skill} (appears in {count} listings)" for skill, count in top_missing
+    ) if top_missing else "- None identified"
+
+    dist_text = ", ".join(f"{k}: {v}" for k, v in bins.items())
+
+    user_prompt = f"""## Candidate Profile
+- **Skills:** {', '.join(profile.skills)}
+- **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
+- **Target Roles:** {', '.join(profile.roles)}
+- **Languages:** {', '.join(profile.languages)}
+
+## Score Distribution ({len(evaluated_jobs)} jobs evaluated)
+{dist_text}
+
+## Top Matches
+{matches_text}
+
+## Most Frequently Missing Skills
+{missing_text}
+
+---
+Write the career summary now."""
+
+    prompt = f"{ADVISOR_SYSTEM_PROMPT}\n\n{user_prompt}"
+
+    return call_gemini(client, prompt, temperature=0.5, max_tokens=2048)

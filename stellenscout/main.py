@@ -17,7 +17,7 @@ from .search_agent import (
     generate_search_queries,
     search_all_queries,
 )
-from .evaluator_agent import evaluate_all_jobs, filter_good_matches
+from .evaluator_agent import evaluate_all_jobs, filter_good_matches, generate_summary
 from .models import EvaluatedJob
 from .cache import ResultCache
 
@@ -339,9 +339,23 @@ Examples:
             reverse=True,
         )
 
+        # Step 6: Generate career summary
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            console=console,
+        ) as progress:
+            task = progress.add_task("Generating career summary...", total=None)
+            if client is None:
+                client = create_client()
+            summary = generate_summary(client, profile, evaluated_jobs)
+            progress.update(task, description="[green]✓[/green] Summary generated")
+
+        console.print()
+        console.print(Panel(summary, title="📊 Market Summary & Career Advice", border_style="cyan"))
         console.print()
 
-        # Step 6: Display results
+        # Step 7: Display results
         display_results(evaluated_jobs, args.min_score)
 
         return 0
