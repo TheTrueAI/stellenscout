@@ -243,7 +243,18 @@ def _render_job_card(ej: EvaluatedJob) -> None:
                 st.markdown(f"**Missing:** {missing}")
 
         with right:
-            if ej.job.link:
+            # Show direct apply buttons for each source (LinkedIn, company website, etc.)
+            if ej.job.apply_options:
+                for option in ej.job.apply_options:
+                    # Prioritize known sources with icons
+                    label = option.source
+                    if "linkedin" in option.source.lower():
+                        label = "🔗 LinkedIn"
+                    elif "company" in option.source.lower() or "career" in option.source.lower():
+                        label = "🏢 Career Page"
+                    st.link_button(label, option.url, use_container_width=True)
+            elif ej.job.link:
+                # Fallback to generic link if no apply options
                 st.link_button("Apply ↗", ej.job.link, use_container_width=True)
 
 

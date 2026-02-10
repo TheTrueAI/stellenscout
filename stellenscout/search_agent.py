@@ -5,8 +5,30 @@ import re
 from google import genai
 from serpapi import GoogleSearch
 
-from .models import CandidateProfile, JobListing
+from .models import CandidateProfile, JobListing, ApplyOption
 from .llm import call_gemini, parse_json
+
+# Questionable job portals that often have expired listings or paywalls
+_BLOCKED_PORTALS = {
+    "bebee",
+    "trabajo",
+    "jooble",
+    "adzuna",
+    "jobrapido",
+    "neuvoo",
+    "mitula",
+    "trovit",
+    "jobomas",
+    "jobijoba",
+    "talent",
+    "jobatus",
+    "jobsora",
+    "studysmarter",
+    "jobilize",
+    "learn4good",
+    "grabjobs",
+    "jobtensor",
+}
 
 # Map country/city names to Google gl= codes so SerpApi doesn't default to "us"
 _GL_CODES: dict[str, str] = {
@@ -223,6 +245,22 @@ def _parse_job_results(results: dict) -> list[JobListing]:
                 if "items" in highlight:
                     description_parts.extend(highlight["items"])
 
+        # Extract apply options (LinkedIn, company website, etc.)
+        # Filter out questionable job portals
+        apply_options = []
+        for option in job_data.get("apply_options", []):
+            if "title" in option and "link" in option:
+                url = option["link"].lower()
+                # Skip if the URL contains any blocked portal domain
+                if not any(blocked in url for blocked in _BLOCKED_PORTALS):
+                    apply_options.append(
+                        ApplyOption(source=option["title"], url=option["link"])
+                    )
+
+        # Skip jobs that only have questionable portal links or no links at all
+        if not apply_options:
+            continue
+
         job = JobListing(
             title=job_data.get("title", "Unknown"),
             company_name=job_data.get("company_name", "Unknown"),
@@ -230,6 +268,7 @@ def _parse_job_results(results: dict) -> list[JobListing]:
             description="\n".join(description_parts),
             link=job_data.get("share_link", job_data.get("link", "")),
             posted_at=job_data.get("detected_extensions", {}).get("posted_at", ""),
+            apply_options=apply_options,
         )
         jobs.append(job)
 

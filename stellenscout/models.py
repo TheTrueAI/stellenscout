@@ -40,6 +40,13 @@ class CandidateProfile(BaseModel):
     )
 
 
+class ApplyOption(BaseModel):
+    """An apply option for a job (e.g., LinkedIn, company website)."""
+
+    source: str = Field(description="Source name (e.g., 'LinkedIn', 'Company Website')")
+    url: str = Field(description="Direct application URL")
+
+
 class JobListing(BaseModel):
     """A job listing from SerpApi."""
 
@@ -49,6 +56,10 @@ class JobListing(BaseModel):
     description: str = ""
     link: str = ""
     posted_at: str = ""
+    apply_options: list[ApplyOption] = Field(
+        default_factory=list,
+        description="List of direct application links (LinkedIn, company site, etc.)"
+    )
 
 
 class JobEvaluation(BaseModel):
