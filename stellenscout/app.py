@@ -18,7 +18,7 @@ jobs_per_query = 10  # default value
 # Inject API keys from Streamlit secrets into env vars
 # (must happen before any stellenscout imports that read env vars)
 # ---------------------------------------------------------------------------
-for key in ("GOOGLE_API_KEY", "SERPAPI_KEY"):
+for key in ("GOOGLE_API_KEY", "SERPAPI_KEY", "SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
     if key not in os.environ:
         try:
             os.environ[key] = st.secrets[key]
@@ -150,6 +150,25 @@ with st.sidebar:
         step=5,
         help="Only show jobs scoring at or above this threshold",
     )
+
+    # ---- Subscribe to daily digest ----------------------------------------
+    st.divider()
+    st.subheader("📬 Daily Matches")
+    with st.form("subscribe_form"):
+        sub_email = st.text_input(
+            "Your email",
+            placeholder="you@example.com",
+            max_chars=254,
+        )
+        sub_submit = st.form_submit_button("Subscribe", use_container_width=True)
+    if sub_submit and sub_email:
+        try:
+            from stellenscout.db import get_admin_client as _get_admin_db, add_subscriber
+            _db = _get_admin_db()
+            add_subscriber(_db, sub_email.strip())
+            st.success("Subscribed! You'll receive daily job matches by email.")
+        except Exception as _sub_err:
+            st.error(f"Could not subscribe: {_sub_err}")
 
     st.divider()
     st.caption(
@@ -560,3 +579,24 @@ elif uploaded_file is None:
         Google Jobs, and each listing is scored against your profile.
         """
     )
+
+    # Show previously saved jobs from Supabase (if available)
+    try:
+        from stellenscout.db import get_admin_client as _get_db_browse, get_all_jobs
+        _db_browse = _get_db_browse()
+        _saved_jobs = get_all_jobs(_db_browse)
+        if _saved_jobs:
+            st.divider()
+            st.subheader("📋 Recent Jobs from Database")
+            for _sj in _saved_jobs[:25]:
+                with st.container(border=True):
+                    _left, _right = st.columns([4, 1])
+                    with _left:
+                        st.markdown(f"**{_sj['title']}** @ {_sj['company']}")
+                        if _sj.get("score"):
+                            st.caption(f"Score: {_sj['score']}/100")
+                    with _right:
+                        if _sj.get("url"):
+                            st.link_button("View ↗", _sj["url"], use_container_width=True)
+    except Exception:
+        pass  # Supabase not configured — silently skip
