@@ -18,7 +18,7 @@ jobs_per_query = 10  # default value
 # Inject API keys from Streamlit secrets into env vars
 # (must happen before any stellenscout imports that read env vars)
 # ---------------------------------------------------------------------------
-for key in ("GOOGLE_API_KEY", "SERPAPI_KEY", "SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
+for key in ("GOOGLE_API_KEY", "SERPAPI_KEY", "SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "RESEND_FROM", "APP_URL"):
     if key not in os.environ:
         try:
             os.environ[key] = st.secrets[key]
@@ -160,20 +160,44 @@ with st.sidebar:
             placeholder="you@example.com",
             max_chars=254,
         )
+        sub_consent = st.checkbox(
+            "I agree to the [Privacy Policy](/privacy)",
+            value=False,
+        )
         sub_submit = st.form_submit_button("Subscribe", use_container_width=True)
     if sub_submit and sub_email:
-        try:
-            from stellenscout.db import get_admin_client as _get_admin_db, add_subscriber
-            _db = _get_admin_db()
-            add_subscriber(_db, sub_email.strip())
-            st.success("Subscribed! You'll receive daily job matches by email.")
-        except Exception as _sub_err:
-            st.error(f"Could not subscribe: {_sub_err}")
+        if not sub_consent:
+            st.warning("Please agree to the Privacy Policy to subscribe.")
+        else:
+            try:
+                import secrets as _secrets
+                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                from stellenscout.db import get_admin_client as _get_admin_db, add_subscriber
+                from stellenscout.emailer import send_verification_email
+
+                _db = _get_admin_db()
+                _token = _secrets.token_urlsafe(32)
+                _expires = (_dt.now(_tz.utc) + _td(hours=24)).isoformat()
+                _existing = add_subscriber(_db, sub_email.strip(), _token, _expires)
+
+                if _existing:
+                    st.info("This email address is already subscribed.")
+                else:
+                    _app_url = os.environ.get("APP_URL", "").rstrip("/")
+                    _verify_url = f"{_app_url}/verify?token={_token}"
+                    send_verification_email(sub_email.strip(), _verify_url)
+                    st.success(
+                        "Please check your inbox to confirm your subscription. "
+                        "The link is valid for 24 hours."
+                    )
+            except Exception as _sub_err:
+                st.error(f"Could not subscribe: {_sub_err}")
 
     st.divider()
     st.caption(
         "Built with [Streamlit](https://streamlit.io) • "
-        "Powered by Gemini & SerpApi"
+        "Powered by Gemini & SerpApi  \n"
+        "[Legal Notice / Impressum](/impressum) · [Privacy Policy](/privacy)"
     )
 
 # Sanitize location

@@ -31,11 +31,89 @@ def get_admin_client() -> Client:
 # Subscribers
 # ---------------------------------------------------------------------------
 
-def add_subscriber(client: Client, email: str) -> dict:
-    """Insert a subscriber (no-op if email already exists)."""
+def add_subscriber(
+    client: Client, email: str, token: str, expires_at: str
+) -> dict | None:
+    """Insert a pending subscriber with a confirmation token.
+
+    If the email already exists and is active, returns the existing row
+    (caller should treat this as a no-op).  Otherwise upserts a new
+    pending row with the given token and expiry.
+
+    Returns:
+        The existing active row (dict) if already confirmed, or None
+        to indicate a new/pending row was written.
+    """
+    # Check if already active
+    existing = (
+        client.table("subscribers")
+        .select("*")
+        .eq("email", email)
+        .execute()
+        .data
+    )
+    if existing and existing[0].get("is_active"):
+        return existing[0]
+
+    # Upsert pending subscriber with new token
+    client.table("subscribers").upsert(
+        {
+            "email": email,
+            "is_active": False,
+            "confirmation_token": token,
+            "token_expires_at": expires_at,
+        },
+        on_conflict="email",
+    ).execute()
+    return None
+
+
+def confirm_subscriber(client: Client, token: str) -> dict | None:
+    """Activate a subscriber by confirmation token.
+
+    Checks that the token exists and has not expired.  On success sets
+    ``is_active=True`` and clears the token fields.
+
+    Returns:
+        The updated subscriber dict, or None if the token is invalid/expired.
+    """
+    rows = (
+        client.table("subscribers")
+        .select("*")
+        .eq("confirmation_token", token)
+        .execute()
+        .data
+    )
+    if not rows:
+        return None
+
+    sub = rows[0]
+    expires = sub.get("token_expires_at")
+    if expires:
+        from datetime import datetime, timezone
+
+        exp_dt = datetime.fromisoformat(expires.replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) > exp_dt:
+            return None
+
+    client.table("subscribers").update(
+        {
+            "is_active": True,
+            "confirmation_token": None,
+            "token_expires_at": None,
+        }
+    ).eq("id", sub["id"]).execute()
+
+    sub["is_active"] = True
+    return sub
+
+
+def get_active_subscribers(client: Client) -> list[dict]:
+    """Return subscribers where is_active is True."""
     return (
         client.table("subscribers")
-        .upsert({"email": email}, on_conflict="email")
+        .select("*")
+        .eq("is_active", True)
         .execute()
         .data
     )
@@ -44,6 +122,20 @@ def add_subscriber(client: Client, email: str) -> dict:
 def get_all_subscribers(client: Client) -> list[dict]:
     """Return all subscriber rows."""
     return client.table("subscribers").select("*").execute().data
+
+
+def deactivate_subscriber(client: Client, subscriber_id: str) -> bool:
+    """Set a subscriber's is_active to False (unsubscribe).
+
+    Returns True if a row was updated, False otherwise.
+    """
+    result = (
+        client.table("subscribers")
+        .update({"is_active": False})
+        .eq("id", subscriber_id)
+        .execute()
+    )
+    return bool(result.data)
 
 
 # ---------------------------------------------------------------------------

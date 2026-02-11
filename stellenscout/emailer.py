@@ -36,7 +36,7 @@ def _build_job_row(job: dict) -> str:
     </tr>"""
 
 
-def _build_html(jobs: list[dict]) -> str:
+def _build_html(jobs: list[dict], unsubscribe_url: str = "") -> str:
     """Build a full HTML email body for the daily digest."""
     today = datetime.now(timezone.utc).strftime("%B %d, %Y")
     rows = "\n".join(_build_job_row(j) for j in jobs)
@@ -88,6 +88,7 @@ def _build_html(jobs: list[dict]) -> str:
                 border-top:1px solid #e5e7eb;text-align:center;
                 color:#9ca3af;font-size:12px">
       Sent by StellenScout &middot; AI-powered job matching for Europe
+      {f'<br><a href="{unsubscribe_url}" style="color:#9ca3af">Unsubscribe</a>' if unsubscribe_url else ""}
     </div>
   </div>
 
@@ -95,13 +96,16 @@ def _build_html(jobs: list[dict]) -> str:
 </html>"""
 
 
-def send_daily_digest(user_email: str, jobs: list[dict]) -> dict:
+def send_daily_digest(
+    user_email: str, jobs: list[dict], unsubscribe_url: str = ""
+) -> dict:
     """Send a daily digest email with new job matches.
 
     Args:
         user_email: Recipient email address.
         jobs: List of job dicts, each with at least ``title``, ``company``,
               ``url``, and optionally ``score``.
+        unsubscribe_url: One-click unsubscribe link for this subscriber.
 
     Returns:
         Resend API response dict.
@@ -117,11 +121,83 @@ def send_daily_digest(user_email: str, jobs: list[dict]) -> dict:
 
     from_addr = os.environ.get("RESEND_FROM", "StellenScout <digest@stellenscout.dev>")
 
+    params: dict = {
+        "from": from_addr,
+        "to": [user_email],
+        "subject": f"StellenScout: {len(jobs)} new job match{'es' if len(jobs) != 1 else ''} for you",
+        "html": _build_html(jobs, unsubscribe_url=unsubscribe_url),
+    }
+    if unsubscribe_url:
+        params["headers"] = {
+            "List-Unsubscribe": f"<{unsubscribe_url}>",
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        }
+
+    return resend.Emails.send(params)
+
+
+def send_verification_email(email: str, verify_url: str) -> dict:
+    """Send a Double Opt-In verification email.
+
+    Args:
+        email: Recipient email address.
+        verify_url: Full URL the user must visit to confirm their subscription.
+
+    Returns:
+        Resend API response dict.
+    """
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise ValueError("RESEND_API_KEY environment variable not set")
+
+    resend.api_key = api_key
+    from_addr = os.environ.get("RESEND_FROM", "StellenScout <digest@stellenscout.dev>")
+
+    html = f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,
+'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f9fafb">
+  <div style="max-width:600px;margin:24px auto;background:#fff;
+              border-radius:8px;overflow:hidden;
+              border:1px solid #e5e7eb">
+    <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);
+                padding:24px;color:#fff;text-align:center">
+      <h1 style="margin:0;font-size:22px">StellenScout</h1>
+      <p style="margin:4px 0 0;opacity:.85;font-size:14px">Confirm your email address</p>
+    </div>
+    <div style="padding:24px">
+      <p>Hello,</p>
+      <p>Thank you for subscribing to the StellenScout Daily Digest.
+         Please confirm your email address by clicking the button below:</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="{verify_url}"
+           style="background:#2563eb;color:#fff;padding:12px 32px;
+                  border-radius:6px;text-decoration:none;font-weight:600;
+                  display:inline-block">
+          Confirm subscription
+        </a>
+      </p>
+      <p style="color:#6b7280;font-size:14px">
+        This link is valid for <strong>24 hours</strong>. If you did not
+        sign up, you can safely ignore this email.
+      </p>
+    </div>
+    <div style="padding:16px 24px;background:#f9fafb;
+                border-top:1px solid #e5e7eb;text-align:center;
+                color:#9ca3af;font-size:12px">
+      StellenScout &middot; AI-powered job matching
+    </div>
+  </div>
+</body>
+</html>"""
+
     return resend.Emails.send(
         {
             "from": from_addr,
-            "to": [user_email],
-            "subject": f"StellenScout: {len(jobs)} new job match{'es' if len(jobs) != 1 else ''} for you",
-            "html": _build_html(jobs),
+            "to": [email],
+            "subject": "StellenScout: Please confirm your email address",
+            "html": html,
         }
     )

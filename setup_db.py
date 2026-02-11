@@ -20,10 +20,15 @@ load_dotenv()
 SETUP_SQL = """\
 -- ── subscribers ──────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS subscribers (
-    id          UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    email       TEXT NOT NULL UNIQUE,
-    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                  UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    email               TEXT NOT NULL UNIQUE,
+    is_active           BOOLEAN NOT NULL DEFAULT FALSE,
+    confirmation_token  TEXT,
+    token_expires_at    TIMESTAMPTZ,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_subscribers_token
+    ON subscribers (confirmation_token) WHERE confirmation_token IS NOT NULL;
 
 -- ── jobs ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS jobs (
@@ -43,6 +48,19 @@ CREATE TABLE IF NOT EXISTS job_sent_logs (
     sent_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (subscriber_id, job_id)
 );
+"""
+
+MIGRATION_SQL = """\
+-- ── Migration: add Double Opt-In columns to subscribers ─────────────
+ALTER TABLE subscribers
+  ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS confirmation_token TEXT,
+  ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
+ALTER TABLE subscribers ALTER COLUMN is_active SET DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_subscribers_token
+    ON subscribers (confirmation_token) WHERE confirmation_token IS NOT NULL;
+-- Existing subscribers stay active:
+UPDATE subscribers SET is_active = TRUE WHERE is_active IS NULL;
 """
 
 REQUIRED_TABLES = ["subscribers", "jobs", "job_sent_logs"]
@@ -70,6 +88,10 @@ def main() -> int:
 
     if all_ok:
         print("\nAll tables exist. You're good to go!")
+        print("\n" + "=" * 60)
+        print("If upgrading, run this migration SQL in the Supabase SQL Editor:\n")
+        print(MIGRATION_SQL)
+        print("=" * 60)
         return 0
 
     print("\n" + "=" * 60)

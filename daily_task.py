@@ -39,7 +39,7 @@ from stellenscout.db import (
     get_admin_client as get_db,
     get_existing_urls,
     upsert_jobs,
-    get_all_subscribers,
+    get_active_subscribers,
     get_sent_job_ids,
     log_sent_jobs,
 )
@@ -126,9 +126,10 @@ def main() -> int:
     )
     url_to_db_id.update({r["url"]: r["id"] for r in all_rows})
 
-    # ── 5. Email each subscriber with unseen jobs ────────────────────────
-    subscribers = get_all_subscribers(db)
-    log.info("Processing %d subscribers", len(subscribers))
+    # ── 5. Email each active subscriber with unseen jobs ──────────────────
+    app_url = os.environ.get("APP_URL", "").rstrip("/")
+    subscribers = get_active_subscribers(db)
+    log.info("Processing %d active subscribers", len(subscribers))
 
     for sub in subscribers:
         sent_ids = get_sent_job_ids(db, sub["id"])
@@ -147,8 +148,9 @@ def main() -> int:
             log.info("  %s — no unseen jobs, skipping", sub["email"])
             continue
 
+        unsubscribe_url = f"{app_url}/unsubscribe?id={sub['id']}" if app_url else ""
         log.info("  %s — sending %d jobs", sub["email"], len(unseen))
-        send_daily_digest(sub["email"], unseen)
+        send_daily_digest(sub["email"], unseen, unsubscribe_url=unsubscribe_url)
 
         new_sent_ids = [url_to_db_id[j["url"]] for j in unseen]
         log_sent_jobs(db, sub["id"], new_sent_ids)

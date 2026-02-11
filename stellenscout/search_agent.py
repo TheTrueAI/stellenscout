@@ -28,6 +28,7 @@ _BLOCKED_PORTALS = {
     "learn4good",
     "grabjobs",
     "jobtensor",
+    "zycto",
 }
 
 # Map country/city names to Google gl= codes so SerpApi doesn't default to "us"
