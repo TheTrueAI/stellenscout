@@ -6,6 +6,7 @@ import os
 import time
 import tempfile
 import shutil
+import secrets
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -184,6 +185,7 @@ _DEFAULTS = {
     "last_run_time": 0.0,
     "run_requested": False,
     "location": "",
+    "cv_processing_consent": False,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -237,9 +239,33 @@ def _cleanup_old_sessions(
 # Housekeeping — runs once per session on first load
 if "cleanup_done" not in st.session_state:
     _cleanup_old_sessions()
+    try:
+        from stellenscout.db import get_admin_client as _get_admin_db, purge_inactive_subscribers
+
+        _db = _get_admin_db()
+        purge_inactive_subscribers(_db, older_than_days=30)
+    except Exception:
+        pass
     st.session_state.cleanup_done = True
 
 _MAX_CV_CHARS = 50_000
+_CONSENT_TEXT_VERSION = "v2026-02-12"
+
+
+def _request_metadata() -> tuple[str | None, str | None]:
+    """Best-effort client metadata capture for DOI evidence logging."""
+    try:
+        headers = dict(st.context.headers)
+    except Exception:
+        return None, None
+
+    forwarded_for = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
+    ip_address = None
+    if forwarded_for:
+        ip_address = forwarded_for.split(",")[0].strip()
+
+    user_agent = headers.get("user-agent") or headers.get("User-Agent")
+    return ip_address, user_agent
 
 
 # ---------------------------------------------------------------------------
@@ -435,6 +461,7 @@ with st.sidebar:
         type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
         help="Upload a different CV",
         key="sidebar_cv_upload",
+        disabled=not st.session_state.cv_processing_consent,
     )
 
     st.divider()
@@ -475,11 +502,17 @@ if not has_cv:
     # Centered file uploader
     col_pad_l, col_center, col_pad_r = st.columns([1, 2, 1])
     with col_center:
+        st.checkbox(
+            "I consent to processing my CV data for AI matching as described in the [Privacy Policy](/privacy).",
+            key="cv_processing_consent",
+            value=st.session_state.cv_processing_consent,
+        )
         hero_uploaded_file = st.file_uploader(
             "Upload your CV to get started",
             type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
             help="Supported formats: PDF, DOCX, Markdown, plain text. Your file stays private.",
             key="hero_cv_upload",
+            disabled=not st.session_state.cv_processing_consent,
         )
         st.caption("Your CV is processed securely via AI. See our [Privacy Policy](/privacy) for details.")
 
@@ -548,6 +581,10 @@ if sidebar_uploaded_file is not None:
 # Eager CV processing — runs on every rerun where a file is uploaded
 # ---------------------------------------------------------------------------
 if uploaded_file is not None:
+    if not st.session_state.cv_processing_consent:
+        st.warning("Please provide CV processing consent before uploading your CV.")
+        st.stop()
+
     file_bytes = uploaded_file.getbuffer()
     if len(file_bytes) > 5 * 1024 * 1024:
         st.error("File exceeds 5 MB limit. Please upload a smaller file.")
@@ -570,8 +607,11 @@ if uploaded_file is not None:
 
 # Capture button intent — profile may not be ready yet
 if has_cv and not has_results and run_button:
-    st.session_state.run_requested = True
-    st.session_state.location = location
+    if not st.session_state.cv_processing_consent:
+        st.warning("Please provide CV processing consent before starting the job search.")
+    else:
+        st.session_state.run_requested = True
+        st.session_state.location = location
 
 # Eager profile extraction — if we have CV text but no profile yet
 if st.session_state.cv_text and st.session_state.profile is None:
@@ -866,15 +906,23 @@ if st.session_state.evaluated_jobs is not None:
             st.warning("Please agree to the Privacy Policy to subscribe.")
         else:
             try:
-                import secrets as _secrets
                 from datetime import datetime as _dt, timezone as _tz, timedelta as _td
                 from stellenscout.db import get_admin_client as _get_admin_db, add_subscriber
                 from stellenscout.emailer import send_verification_email
 
                 _db = _get_admin_db()
-                _token = _secrets.token_urlsafe(32)
+                _token = secrets.token_urlsafe(32)
                 _expires = (_dt.now(_tz.utc) + _td(hours=24)).isoformat()
-                _existing = add_subscriber(_db, sub_email.strip(), _token, _expires)
+                _signup_ip, _signup_ua = _request_metadata()
+                _existing = add_subscriber(
+                    _db,
+                    sub_email.strip(),
+                    _token,
+                    _expires,
+                    consent_text_version=_CONSENT_TEXT_VERSION,
+                    signup_ip=_signup_ip,
+                    signup_user_agent=_signup_ua,
+                )
 
                 if _existing:
                     st.info("This email address is already subscribed.")

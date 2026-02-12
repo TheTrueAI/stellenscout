@@ -20,6 +20,8 @@ Required env vars:
 import logging
 import os
 import sys
+import secrets
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -42,6 +44,8 @@ from stellenscout.db import (
     get_active_subscribers,
     get_sent_job_ids,
     log_sent_jobs,
+    issue_unsubscribe_token,
+    purge_inactive_subscribers,
 )
 from stellenscout.emailer import send_daily_digest
 
@@ -82,6 +86,9 @@ def main() -> int:
 
     # ── 4. Filter against DB & save new ones ─────────────────────────────
     db = get_db()
+    deleted_count = purge_inactive_subscribers(db, older_than_days=30)
+    if deleted_count:
+        log.info("Purged %d inactive subscribers older than 30 days", deleted_count)
 
     # Build a URL for each evaluated job (prefer first apply option, fall back to link)
     def _job_url(ej: EvaluatedJob) -> str:
@@ -148,7 +155,19 @@ def main() -> int:
             log.info("  %s — no unseen jobs, skipping", sub["email"])
             continue
 
-        unsubscribe_url = f"{app_url}/unsubscribe?id={sub['id']}" if app_url else ""
+        unsubscribe_url = ""
+        if app_url:
+            unsub_token = secrets.token_urlsafe(32)
+            unsub_expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+            token_written = issue_unsubscribe_token(
+                db,
+                sub["id"],
+                token=unsub_token,
+                expires_at=unsub_expires,
+            )
+            if token_written:
+                unsubscribe_url = f"{app_url}/unsubscribe?token={unsub_token}"
+
         log.info("  %s — sending %d jobs", sub["email"], len(unseen))
         send_daily_digest(sub["email"], unseen, unsubscribe_url=unsubscribe_url)
 

@@ -25,10 +25,21 @@ CREATE TABLE IF NOT EXISTS subscribers (
     is_active           BOOLEAN NOT NULL DEFAULT FALSE,
     confirmation_token  TEXT,
     token_expires_at    TIMESTAMPTZ,
+    consent_text_version TEXT,
+    signup_ip           TEXT,
+    signup_user_agent   TEXT,
+    confirmed_at        TIMESTAMPTZ,
+    confirm_ip          TEXT,
+    confirm_user_agent  TEXT,
+    unsubscribe_token   TEXT,
+    unsubscribe_token_expires_at TIMESTAMPTZ,
+    unsubscribed_at     TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_subscribers_token
     ON subscribers (confirmation_token) WHERE confirmation_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_subscribers_unsubscribe_token
+    ON subscribers (unsubscribe_token) WHERE unsubscribe_token IS NOT NULL;
 
 -- ── jobs ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS jobs (
@@ -55,10 +66,21 @@ MIGRATION_SQL = """\
 ALTER TABLE subscribers
   ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS confirmation_token TEXT,
-  ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ;
+    ADD COLUMN IF NOT EXISTS token_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS consent_text_version TEXT,
+    ADD COLUMN IF NOT EXISTS signup_ip TEXT,
+    ADD COLUMN IF NOT EXISTS signup_user_agent TEXT,
+    ADD COLUMN IF NOT EXISTS confirmed_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS confirm_ip TEXT,
+    ADD COLUMN IF NOT EXISTS confirm_user_agent TEXT,
+    ADD COLUMN IF NOT EXISTS unsubscribe_token TEXT,
+    ADD COLUMN IF NOT EXISTS unsubscribe_token_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS unsubscribed_at TIMESTAMPTZ;
 ALTER TABLE subscribers ALTER COLUMN is_active SET DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_subscribers_token
     ON subscribers (confirmation_token) WHERE confirmation_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_subscribers_unsubscribe_token
+        ON subscribers (unsubscribe_token) WHERE unsubscribe_token IS NOT NULL;
 -- Existing subscribers stay active:
 UPDATE subscribers SET is_active = TRUE WHERE is_active IS NULL;
 """

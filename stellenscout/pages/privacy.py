@@ -34,7 +34,11 @@ When you subscribe to our email digest, we process the following data:
 
 - **Email address** — to deliver the daily job digest
 - **Subscription status** — whether you have actively confirmed your subscription
-- **Timestamps** — when you signed up and confirmed
+- **Double Opt-In evidence** — consent text version, signup/confirmation timestamps,
+  and (where technically available) IP address and user agent at signup and
+  confirmation
+- **Unsubscribe token data** — short-lived token and expiry used for one-click
+  unsubscribe links
 
 ### 2b. CV / Resume Analysis
 
@@ -111,9 +115,10 @@ If you have questions about how the AI evaluation works, contact us at
   unsubscribing, your record is deactivated and retained for up to **30 days**
   before automatic deletion. You may request immediate deletion at any time (see
   Section 9).
-- **CV / Resume** — processed in memory only; not permanently stored by
-  StellenScout. Cached analysis results are stored locally on the server for up
-  to 24 hours to avoid redundant processing, then automatically deleted.
+- **CV / Resume** — your uploaded file is processed transiently and removed after
+  extraction. Derived analysis results (profile, queries, evaluations) are
+  cached locally on the server for up to 24 hours to avoid redundant processing,
+  then automatically deleted.
 - **Google Gemini API** — may retain inputs and outputs for up to 30 days for
   abuse monitoring and legal compliance.
 
