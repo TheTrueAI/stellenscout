@@ -1,20 +1,34 @@
 """Impressum / Legal Notice — required by § 5 TMG (German Telemedia Act)."""
 
+import os
+
 import streamlit as st
+
+for key in ("IMPRESSUM_NAME", "IMPRESSUM_ADDRESS", "IMPRESSUM_EMAIL"):
+    if key not in os.environ:
+        try:
+            os.environ[key] = st.secrets[key]
+        except (KeyError, FileNotFoundError):
+            pass
+
+_name = os.environ.get("IMPRESSUM_NAME", "")
+_address = os.environ.get("IMPRESSUM_ADDRESS", "")
+_email = os.environ.get("IMPRESSUM_EMAIL", "")
 
 st.set_page_config(page_title="StellenScout – Legal Notice", page_icon="⚖️")
 
 st.title("Legal Notice / Impressum")
 st.caption("Information pursuant to § 5 TMG (German Telemedia Act)")
 
-st.markdown("""
-**Max Mustermann**
-Musterstraße 1
-12345 Musterstadt
-Germany
+if not all((_name, _address, _email)):
+    st.warning("Impressum contact details are not configured. Set IMPRESSUM_NAME, IMPRESSUM_ADDRESS, and IMPRESSUM_EMAIL.")
 
-**Contact:**
-Email: kontakt@stellenscout.com
+st.markdown(f"""
+**{_name}**
+
+{_address}
+
+Email: {_email}
 
 ---
 

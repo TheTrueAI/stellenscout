@@ -1,17 +1,30 @@
 """Privacy Policy — GDPR compliant."""
 
+import os
+
 import streamlit as st
+
+for key in ("IMPRESSUM_NAME", "IMPRESSUM_ADDRESS", "IMPRESSUM_EMAIL"):
+    if key not in os.environ:
+        try:
+            os.environ[key] = st.secrets[key]
+        except (KeyError, FileNotFoundError):
+            pass
+
+_name = os.environ.get("IMPRESSUM_NAME", "")
+_address = os.environ.get("IMPRESSUM_ADDRESS", "")
+_email = os.environ.get("IMPRESSUM_EMAIL", "")
 
 st.set_page_config(page_title="StellenScout – Privacy Policy", page_icon="🔒")
 
 st.title("Privacy Policy")
 
-st.markdown("""
+st.markdown(f"""
 ## 1. Data Controller
 
-Max Mustermann
-Musterstraße 1, 12345 Musterstadt, Germany
-Email: kontakt@stellenscout.com
+{_name}
+{_address}
+Email: {_email}
 
 ## 2. Data We Collect
 
@@ -100,5 +113,5 @@ You have the right to:
 - **Withdraw consent** — at any time, e.g. via the unsubscribe link in every email
 - **Lodge a complaint** (Art. 77 GDPR) — with a supervisory authority
 
-Contact us at **kontakt@stellenscout.com** to exercise your rights.
+Contact us at **{_email}** to exercise your rights.
 """)
