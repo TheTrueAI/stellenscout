@@ -50,6 +50,124 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
+# ---------------------------------------------------------------------------
+# Custom CSS
+# ---------------------------------------------------------------------------
+def _inject_custom_css() -> None:
+    st.markdown("""
+    <style>
+    /* Hero section */
+    .hero-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 16px;
+        padding: 3rem 2rem;
+        text-align: center;
+        color: white;
+        margin-bottom: 2rem;
+    }
+    .hero-section h1 {
+        color: white !important;
+        font-size: 2.4rem;
+        margin-bottom: 0.5rem;
+    }
+    .hero-section p {
+        color: rgba(255,255,255,0.9);
+        font-size: 1.15rem;
+        margin-top: 0;
+    }
+
+    /* Step indicator */
+    .step-indicator {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.75rem;
+        margin: 1.5rem 0;
+    }
+    .step-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.4rem 1rem;
+        border-radius: 999px;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+    .step-done {
+        background: #dcfce7;
+        color: #166534;
+        border: 2px solid #86efac;
+    }
+    .step-active {
+        background: #dbeafe;
+        color: #1e40af;
+        border: 2px solid #667eea;
+        animation: pulse-border 2s ease-in-out infinite;
+    }
+    .step-pending {
+        background: #f1f5f9;
+        color: #64748b;
+        border: 2px solid #e2e8f0;
+    }
+    @keyframes pulse-border {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(102,126,234,0.4); }
+        50% { box-shadow: 0 0 0 6px rgba(102,126,234,0); }
+    }
+
+    /* Newsletter CTA */
+    .newsletter-cta {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        border-radius: 16px;
+        padding: 2rem;
+        text-align: center;
+        color: white;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+    }
+    .newsletter-cta h3 {
+        color: white !important;
+        margin-bottom: 0.5rem;
+    }
+    .newsletter-cta p {
+        color: rgba(255,255,255,0.9);
+        margin-top: 0;
+    }
+
+    /* Sidebar */
+    [data-testid="stSidebar"] > div:first-child {
+        background: linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    }
+
+    /* Metric cards */
+    [data-testid="stMetric"] {
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 0.75rem 1rem;
+    }
+
+    /* Score badge */
+    .score-badge {
+        display: inline-block;
+        padding: 0.2rem 0.7rem;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 0.95rem;
+    }
+    .score-green  { background: #dcfce7; color: #166534; }
+    .score-yellow { background: #fef9c3; color: #854d0e; }
+    .score-orange { background: #ffedd5; color: #9a3412; }
+    .score-red    { background: #fee2e2; color: #991b1b; }
+
+    /* General spacing */
+    .block-container { padding-top: 2rem; }
+    </style>
+    """, unsafe_allow_html=True)
+
+
+_inject_custom_css()
+
 # ---------------------------------------------------------------------------
 # Session state defaults
 # ---------------------------------------------------------------------------
@@ -62,8 +180,10 @@ _DEFAULTS = {
     "summary": None,
     "cv_text": None,
     "cv_file_hash": None,
+    "cv_file_name": None,
     "last_run_time": 0.0,
     "run_requested": False,
+    "location": "",
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -119,90 +239,6 @@ if "cleanup_done" not in st.session_state:
     _cleanup_old_sessions()
     st.session_state.cleanup_done = True
 
-# ---------------------------------------------------------------------------
-# Sidebar — inputs
-# ---------------------------------------------------------------------------
-with st.sidebar:
-    st.title("🔍 StellenScout")
-    st.caption("AI-powered job matching for Europe")
-    st.divider()
-
-    uploaded_file = st.file_uploader(
-        "Upload your CV",
-        type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
-        help="Supported formats: PDF, DOCX, Markdown, plain text",
-    )
-
-    with st.form("search_form"):
-        location = st.text_input("Target location", max_chars=100)
-        run_button = st.form_submit_button(
-            "🚀 Find Jobs",
-            use_container_width=True,
-            disabled=uploaded_file is None,
-            type="primary",
-        )
-
-    min_score = st.slider(
-        "Minimum match score",
-        min_value=0,
-        max_value=100,
-        value=70,
-        step=5,
-        help="Only show jobs scoring at or above this threshold",
-    )
-
-    # ---- Subscribe to daily digest ----------------------------------------
-    st.divider()
-    st.subheader("📬 Daily Matches")
-    with st.form("subscribe_form"):
-        sub_email = st.text_input(
-            "Your email",
-            placeholder="you@example.com",
-            max_chars=254,
-        )
-        sub_consent = st.checkbox(
-            "I agree to the [Privacy Policy](/privacy)",
-            value=False,
-        )
-        sub_submit = st.form_submit_button("Subscribe", use_container_width=True)
-    if sub_submit and sub_email:
-        if not sub_consent:
-            st.warning("Please agree to the Privacy Policy to subscribe.")
-        else:
-            try:
-                import secrets as _secrets
-                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
-                from stellenscout.db import get_admin_client as _get_admin_db, add_subscriber
-                from stellenscout.emailer import send_verification_email
-
-                _db = _get_admin_db()
-                _token = _secrets.token_urlsafe(32)
-                _expires = (_dt.now(_tz.utc) + _td(hours=24)).isoformat()
-                _existing = add_subscriber(_db, sub_email.strip(), _token, _expires)
-
-                if _existing:
-                    st.info("This email address is already subscribed.")
-                else:
-                    _app_url = os.environ.get("APP_URL", "").rstrip("/")
-                    _verify_url = f"{_app_url}/verify?token={_token}"
-                    send_verification_email(sub_email.strip(), _verify_url)
-                    st.success(
-                        "Please check your inbox to confirm your subscription. "
-                        "The link is valid for 24 hours."
-                    )
-            except Exception as _sub_err:
-                st.error(f"Could not subscribe: {_sub_err}")
-
-    st.divider()
-    st.caption(
-        "Built with [Streamlit](https://streamlit.io) • "
-        "Powered by Gemini & SerpApi  \n"
-        "[Legal Notice / Impressum](/impressum) · [Privacy Policy](/privacy)"
-    )
-
-# Sanitize location
-location = location.strip()[:100]
-
 _MAX_CV_CHARS = 50_000
 
 
@@ -226,10 +262,9 @@ def _extract_uploaded_cv(uploaded_file) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Helper: display profile (no wrapping expander — always visible)
+# Helper: display profile (for inside expander — no subheader)
 # ---------------------------------------------------------------------------
 def _render_profile(profile: CandidateProfile) -> None:
-    st.subheader("📋 Candidate Profile")
     if profile.summary:
         st.markdown(f"*{profile.summary}*")
 
@@ -249,7 +284,7 @@ def _render_profile(profile: CandidateProfile) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Helper: score emoji
+# Helper: score helpers
 # ---------------------------------------------------------------------------
 def _score_emoji(score: int) -> str:
     if score >= 85:
@@ -261,20 +296,33 @@ def _score_emoji(score: int) -> str:
     return "🔴"
 
 
+def _score_css_class(score: int) -> str:
+    if score >= 85:
+        return "score-green"
+    if score >= 70:
+        return "score-yellow"
+    if score >= 50:
+        return "score-orange"
+    return "score-red"
+
+
 # ---------------------------------------------------------------------------
 # Helper: render a single job card
 # ---------------------------------------------------------------------------
 def _render_job_card(ej: EvaluatedJob) -> None:
     score = ej.evaluation.score
     emoji = _score_emoji(score)
+    css_class = _score_css_class(score)
     missing = ", ".join(ej.evaluation.missing_skills) if ej.evaluation.missing_skills else None
 
     with st.container(border=True):
         left, center, right = st.columns([0.6, 4, 1])
 
         with left:
-            st.markdown(f"## {emoji}")
-            st.markdown(f"**{score}**/100")
+            st.markdown(
+                f'<span class="score-badge {css_class}">{emoji} {score}</span>',
+                unsafe_allow_html=True,
+            )
 
         with center:
             st.markdown(f"**{ej.job.title}** @ {ej.job.company_name}")
@@ -287,10 +335,8 @@ def _render_job_card(ej: EvaluatedJob) -> None:
                 st.markdown(f"**Missing:** {missing}")
 
         with right:
-            # Show direct apply buttons for each source (LinkedIn, company website, etc.)
             if ej.job.apply_options:
                 for option in ej.job.apply_options:
-                    # Prioritize known sources with icons
                     label = option.source
                     if "linkedin" in option.source.lower():
                         label = "🔗 LinkedIn"
@@ -298,14 +344,36 @@ def _render_job_card(ej: EvaluatedJob) -> None:
                         label = "🏢 Career Page"
                     st.link_button(label, option.url, use_container_width=True)
             elif ej.job.link:
-                # Fallback to generic link if no apply options
                 st.link_button("Apply ↗", ej.job.link, use_container_width=True)
 
 
 # ---------------------------------------------------------------------------
-# Profile placeholder — sits at the top, rendered early during pipeline
+# Helper: step indicator
 # ---------------------------------------------------------------------------
-profile_slot = st.empty()
+def _render_step_indicator(step: int) -> None:
+    """Render a 3-step indicator. *step* is the current active step (1, 2, or 3).
+    Steps < step are 'done', step == step is 'active', step > step are 'pending'.
+    If step > 3, all are done.
+    """
+    labels = ["1. Upload CV", "2. Choose Location", "3. Get Matches"]
+    icons_done = ["✅", "✅", "✅"]
+    icons_active = ["📄", "📍", "🚀"]
+    icons_pending = ["📄", "📍", "🚀"]
+
+    badges = []
+    for i, label in enumerate(labels, 1):
+        if i < step:
+            badges.append(f'<span class="step-badge step-done">{icons_done[i-1]} {label}</span>')
+        elif i == step:
+            badges.append(f'<span class="step-badge step-active">{icons_active[i-1]} {label}</span>')
+        else:
+            badges.append(f'<span class="step-badge step-pending">{icons_pending[i-1]} {label}</span>')
+
+    st.markdown(
+        f'<div class="step-indicator">{"".join(badges)}</div>',
+        unsafe_allow_html=True,
+    )
+
 
 # ---------------------------------------------------------------------------
 # Validate keys before running
@@ -326,6 +394,157 @@ def _keys_ok() -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Sidebar — status & settings panel
+# ---------------------------------------------------------------------------
+with st.sidebar:
+    st.title("🔍 StellenScout")
+    st.caption("AI-powered job matching")
+    st.divider()
+
+    # -- Status section ----------------------------------------------------
+    st.markdown("**Status**")
+    if st.session_state.cv_file_name:
+        st.markdown(f"📄 **CV:** {st.session_state.cv_file_name}")
+    else:
+        st.markdown("📄 **CV:** Not uploaded")
+
+    if st.session_state.location:
+        st.markdown(f"📍 **Location:** {st.session_state.location}")
+    else:
+        st.markdown("📍 **Location:** Not set")
+
+    if st.session_state.evaluated_jobs is not None:
+        st.markdown(f"🎯 **Matches:** {len(st.session_state.evaluated_jobs)}")
+
+    st.divider()
+
+    # -- Settings ----------------------------------------------------------
+    st.markdown("**Settings**")
+    min_score = st.slider(
+        "Minimum match score",
+        min_value=0,
+        max_value=100,
+        value=70,
+        step=5,
+        help="Only show jobs scoring at or above this threshold",
+    )
+
+    # -- Change CV re-uploader (secondary) ---------------------------------
+    sidebar_uploaded_file = st.file_uploader(
+        "Change CV",
+        type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
+        help="Upload a different CV",
+        key="sidebar_cv_upload",
+    )
+
+    st.divider()
+    st.caption(
+        "Built with [Streamlit](https://streamlit.io) • "
+        "Powered by Gemini & SerpApi  \n"
+        "[Legal Notice / Impressum](/impressum) · [Privacy Policy](/privacy)"
+    )
+
+# ---------------------------------------------------------------------------
+# Main area — merge uploaders & process CV
+# ---------------------------------------------------------------------------
+
+# Phase A hero uploader (rendered below) — we need a placeholder for it
+# We'll use a two-pass approach: first collect the file, then render phases.
+
+# Determine current phase
+has_cv = st.session_state.cv_file_hash is not None
+has_results = st.session_state.evaluated_jobs is not None
+
+# Defaults for variables set conditionally in phase branches
+run_button = False
+location = st.session_state.location
+
+# Render the appropriate phase
+if not has_cv:
+    # ===== Phase A: Landing — no CV uploaded =============================
+    st.markdown(
+        '<div class="hero-section">'
+        "<h1>Find Your Dream Job</h1>"
+        "<p>Upload your CV and let AI match you with the best openings</p>"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    _render_step_indicator(1)
+
+    # Centered file uploader
+    col_pad_l, col_center, col_pad_r = st.columns([1, 2, 1])
+    with col_center:
+        hero_uploaded_file = st.file_uploader(
+            "Upload your CV to get started",
+            type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
+            help="Supported formats: PDF, DOCX, Markdown, plain text. Your file stays private.",
+            key="hero_cv_upload",
+        )
+        st.caption("Your CV is analyzed securely and never shared with third parties.")
+
+    # Recent DB jobs below
+    try:
+        from stellenscout.db import get_admin_client as _get_db_browse, get_all_jobs
+        _db_browse = _get_db_browse()
+        _saved_jobs = get_all_jobs(_db_browse)
+        if _saved_jobs:
+            st.divider()
+            st.subheader("📋 Recent Jobs from Database")
+            for _sj in _saved_jobs[:25]:
+                with st.container(border=True):
+                    _left, _right = st.columns([4, 1])
+                    with _left:
+                        st.markdown(f"**{_sj['title']}** @ {_sj['company']}")
+                        if _sj.get("score"):
+                            st.caption(f"Score: {_sj['score']}/100")
+                    with _right:
+                        if _sj.get("url"):
+                            st.link_button("View ↗", _sj["url"], use_container_width=True)
+    except Exception:
+        pass  # Supabase not configured — silently skip
+else:
+    hero_uploaded_file = None
+
+    if not has_results:
+        # ===== Phase B: CV uploaded, no results yet ==========================
+        _render_step_indicator(2)
+
+        col_pad_l, col_center, col_pad_r = st.columns([1, 2, 1])
+        with col_center:
+            with st.form("search_form"):
+                location = st.text_input(
+                    "Where do you want to work?",
+                    max_chars=100,
+                    placeholder="e.g. Munich, Amsterdam, Paris...",
+                )
+                run_button = st.form_submit_button(
+                    "🚀 Find Jobs",
+                    use_container_width=True,
+                    type="primary",
+                )
+            location = location.strip()[:100]
+
+        # Profile in collapsed expander
+        if st.session_state.profile is not None:
+            with st.expander("Your AI Profile", expanded=True, icon="📋"):
+                _render_profile(st.session_state.profile)
+    else:
+        # ===== Phase C: Results ready ========================================
+        _render_step_indicator(4)  # all done
+        location = st.session_state.location
+        run_button = False
+
+# ---------------------------------------------------------------------------
+# Merge uploaders — hero or sidebar
+# ---------------------------------------------------------------------------
+uploaded_file = None
+if not has_cv:
+    uploaded_file = hero_uploaded_file
+if sidebar_uploaded_file is not None:
+    uploaded_file = sidebar_uploaded_file
+
+# ---------------------------------------------------------------------------
 # Eager CV processing — runs on every rerun where a file is uploaded
 # ---------------------------------------------------------------------------
 if uploaded_file is not None:
@@ -340,15 +559,19 @@ if uploaded_file is not None:
         cv_text = _extract_uploaded_cv(uploaded_file)
         st.session_state.cv_text = cv_text
         st.session_state.cv_file_hash = file_hash
+        st.session_state.cv_file_name = uploaded_file.name
         # Clear stale downstream state
         st.session_state.profile = None
         st.session_state.queries = None
         st.session_state.evaluated_jobs = None
         st.session_state.summary = None
+        st.session_state.pop("summary_requested", None)
+        st.rerun()
 
 # Capture button intent — profile may not be ready yet
-if run_button and uploaded_file is not None:
+if has_cv and not has_results and run_button:
     st.session_state.run_requested = True
+    st.session_state.location = location
 
 # Eager profile extraction — if we have CV text but no profile yet
 if st.session_state.cv_text and st.session_state.profile is None:
@@ -356,11 +579,12 @@ if st.session_state.cv_text and st.session_state.profile is None:
     cached_profile = cache.load_profile(st.session_state.cv_text)
     if cached_profile is not None:
         st.session_state.profile = cached_profile
+        st.rerun()
     elif _keys_ok():
         label = (
-            "🧠 Analyzing CV with AI… (job search will start automatically)"
+            "🧠 Analyzing your CV... (job search will start automatically)"
             if st.session_state.run_requested
-            else "🧠 Analyzing CV with AI…"
+            else "🧠 Analyzing your CV..."
         )
         with st.status(label, expanded=False) as status:
             client = create_client()
@@ -368,23 +592,16 @@ if st.session_state.cv_text and st.session_state.profile is None:
             cache.save_profile(st.session_state.cv_text, profile)
             st.session_state.profile = profile
             status.update(label="✅ Profile extracted", state="complete")
-
-# Always render profile from session state when available
-if st.session_state.profile is not None:
-    with profile_slot.container():
-        _render_profile(st.session_state.profile)
+        st.rerun()
 
 
 # ---------------------------------------------------------------------------
-# Main area
+# Pipeline
 # ---------------------------------------------------------------------------
 def _run_pipeline() -> None:
-    """Execute the pipeline from query generation onward.
-
-    CV parsing and profile extraction are handled eagerly on upload,
-    so this function starts at query generation.
-    """
+    """Execute the pipeline from query generation onward."""
     profile = st.session_state.profile
+    location = st.session_state.location
     if profile is None:
         st.error("No candidate profile available. Please upload a CV first.")
         return
@@ -393,7 +610,7 @@ def _run_pipeline() -> None:
     client = None  # lazy — only created when needed
 
     # ---- Step 1: Generate queries ----------------------------------------
-    with st.status("🔍 Generating search queries…", expanded=False) as status:
+    with st.status("✨ Crafting search queries...", expanded=False) as status:
         cached_queries = cache.load_queries(profile, location)
         if cached_queries is not None:
             queries = cached_queries
@@ -407,14 +624,26 @@ def _run_pipeline() -> None:
     st.session_state.queries = queries
 
     # ---- Step 2: Search for jobs -----------------------------------------
-    with st.status("🌐 Searching for jobs…", expanded=False) as status:
+    search_progress = st.progress(0, text="🌍 Scouting jobs...")
+    with st.status("🌍 Scouting jobs...", expanded=False) as status:
         cached_jobs = cache.load_jobs()
         if cached_jobs is not None:
             jobs = cached_jobs
+            search_progress.empty()
             status.update(label=f"✅ Found {len(jobs)} jobs (cached)", state="complete")
         else:
-            jobs = search_all_queries(queries, jobs_per_query=jobs_per_query, location=location)
+            def _search_progress(qi: int, total: int, unique: int) -> None:
+                pct = qi / total
+                search_progress.progress(pct, text=f"🌍 Searching query {qi}/{total} — {unique} unique jobs found so far...")
+
+            jobs = search_all_queries(
+                queries,
+                jobs_per_query=jobs_per_query,
+                location=location,
+                on_progress=_search_progress,
+            )
             cache.save_jobs(jobs)
+            search_progress.empty()
             status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
 
     if not jobs:
@@ -433,7 +662,7 @@ def _run_pipeline() -> None:
             client = create_client()
 
         all_evals = dict(cached_evals)
-        progress_bar = st.progress(0, text=f"Evaluating 0/{len(new_jobs)} jobs…")
+        progress_bar = st.progress(0, text="⭐ Rating each job for you...")
         results_slot = st.empty()
 
         with ThreadPoolExecutor(max_workers=10) as executor:
@@ -449,7 +678,7 @@ def _run_pipeline() -> None:
                 all_evals[key] = ej
                 progress_bar.progress(
                     i / len(new_jobs),
-                    text=f"Evaluated {i}/{len(new_jobs)} jobs…",
+                    text=f"⭐ Rating each job for you... ({i}/{len(new_jobs)})",
                 )
                 # Re-render all results so far, sorted by score
                 sorted_so_far = sorted(
@@ -473,14 +702,6 @@ def _run_pipeline() -> None:
     )
     st.session_state.evaluated_jobs = evaluated_jobs
 
-    # ---- Step 4: Generate career summary ------------------------------------
-    with st.status("📊 Generating career summary…", expanded=False) as status:
-        if client is None:
-            client = create_client()
-        summary = generate_summary(client, profile, evaluated_jobs)
-        st.session_state.summary = summary
-        status.update(label="✅ Career summary ready", state="complete")
-
 
 # ---------------------------------------------------------------------------
 # Run pipeline on button click
@@ -497,30 +718,32 @@ if st.session_state.run_requested and st.session_state.profile is not None:
         try:
             st.session_state.last_run_time = time.monotonic()
             _run_pipeline()
+            st.rerun()
         except Exception:
             logger.exception("Pipeline error")
             st.error("Something went wrong. Please try again or upload a different CV.")
 
-if not run_button and st.session_state.queries is not None:
-    with st.expander(
-        f"🔍 **Search Queries** ({len(st.session_state.queries)})",
-        expanded=False,
-    ):
-        for q in st.session_state.queries:
-            st.markdown(f"- {q}")
-
 # ---------------------------------------------------------------------------
-# Display results — unified card layout
+# Display results — Jobs first, summary collapsed below
 # ---------------------------------------------------------------------------
 if st.session_state.evaluated_jobs is not None:
     evaluated_jobs: list[EvaluatedJob] = st.session_state.evaluated_jobs
 
+    # -- Search queries (collapsed) ----------------------------------------
+    if st.session_state.queries is not None:
+        with st.expander(
+            f"🔍 **Search Queries** ({len(st.session_state.queries)})",
+            expanded=False,
+        ):
+            for q in st.session_state.queries:
+                st.markdown(f"- {q}")
+
+    # -- Profile (collapsed) -----------------------------------------------
+    if st.session_state.profile is not None:
+        with st.expander("Your AI Profile", expanded=False, icon="📋"):
+            _render_profile(st.session_state.profile)
+
     st.divider()
-
-    if st.session_state.summary is not None:
-        with st.expander("📊 **Market Summary & Career Advice**", expanded=True):
-            st.markdown(st.session_state.summary)
-
     st.subheader("🎯 Job Matches")
 
     # -- Filter controls ---------------------------------------------------
@@ -587,40 +810,81 @@ if st.session_state.evaluated_jobs is not None:
         for ej in filtered:
             _render_job_card(ej)
 
-elif uploaded_file is None:
-    # Landing page
+    # -- Career summary (collapsed, after job cards) -----------------------
+    if st.session_state.summary is not None:
+        with st.expander("📊 Market Summary & Career Advice", expanded=True):
+            st.markdown(st.session_state.summary)
+    else:
+        # Lazy summary generation — trigger on next rerun
+        if st.session_state.profile is not None and "summary_requested" not in st.session_state:
+            st.session_state.summary_requested = True
+            st.rerun()
+        elif st.session_state.get("summary_requested") and st.session_state.summary is None:
+            try:
+                with st.status("📊 Generating career summary...", expanded=False) as status:
+                    client = create_client()
+                    summary = generate_summary(client, st.session_state.profile, evaluated_jobs)
+                    st.session_state.summary = summary
+                    del st.session_state.summary_requested
+                    status.update(label="✅ Career summary ready", state="complete")
+                st.rerun()
+            except Exception:
+                logger.exception("Summary generation error")
+                del st.session_state.summary_requested
+
+    # -- Newsletter CTA (after everything) ---------------------------------
     st.markdown(
-        """
-        ## 🔍 Welcome to StellenScout
-
-        **AI-powered job matching for the European market.**
-
-        1. **Upload your CV** (PDF, DOCX, Markdown, or TXT) in the sidebar
-        2. **Choose your target location** (e.g., Munich, Paris, Amsterdam)
-        3. **Click "Find Jobs"** and let AI match you with the best openings
-
-        Your CV is analyzed by Gemini AI, relevant jobs are fetched from
-        Google Jobs, and each listing is scored against your profile.
-        """
+        '<div class="newsletter-cta">'
+        "<h3>Didn't find your dream job yet?</h3>"
+        "<p>Get fresh AI-matched jobs delivered to your inbox every day.</p>"
+        "</div>",
+        unsafe_allow_html=True,
     )
 
-    # Show previously saved jobs from Supabase (if available)
-    try:
-        from stellenscout.db import get_admin_client as _get_db_browse, get_all_jobs
-        _db_browse = _get_db_browse()
-        _saved_jobs = get_all_jobs(_db_browse)
-        if _saved_jobs:
-            st.divider()
-            st.subheader("📋 Recent Jobs from Database")
-            for _sj in _saved_jobs[:25]:
-                with st.container(border=True):
-                    _left, _right = st.columns([4, 1])
-                    with _left:
-                        st.markdown(f"**{_sj['title']}** @ {_sj['company']}")
-                        if _sj.get("score"):
-                            st.caption(f"Score: {_sj['score']}/100")
-                    with _right:
-                        if _sj.get("url"):
-                            st.link_button("View ↗", _sj["url"], use_container_width=True)
-    except Exception:
-        pass  # Supabase not configured — silently skip
+    with st.form("subscribe_form"):
+        sub_col1, sub_col2 = st.columns([3, 1])
+        with sub_col1:
+            sub_email = st.text_input(
+                "Your email",
+                placeholder="you@example.com",
+                max_chars=254,
+                label_visibility="collapsed",
+            )
+        with sub_col2:
+            sub_submit = st.form_submit_button(
+                "Subscribe to Daily Matches",
+                use_container_width=True,
+                type="primary",
+            )
+        sub_consent = st.checkbox(
+            "I agree to the [Privacy Policy](/privacy)",
+            value=False,
+        )
+
+    if sub_submit and sub_email:
+        if not sub_consent:
+            st.warning("Please agree to the Privacy Policy to subscribe.")
+        else:
+            try:
+                import secrets as _secrets
+                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                from stellenscout.db import get_admin_client as _get_admin_db, add_subscriber
+                from stellenscout.emailer import send_verification_email
+
+                _db = _get_admin_db()
+                _token = _secrets.token_urlsafe(32)
+                _expires = (_dt.now(_tz.utc) + _td(hours=24)).isoformat()
+                _existing = add_subscriber(_db, sub_email.strip(), _token, _expires)
+
+                if _existing:
+                    st.info("This email address is already subscribed.")
+                else:
+                    _app_url = os.environ.get("APP_URL", "").rstrip("/")
+                    _verify_url = f"{_app_url}/verify?token={_token}"
+                    send_verification_email(sub_email.strip(), _verify_url)
+                    st.success(
+                        "Please check your inbox to confirm your subscription. "
+                        "The link is valid for 24 hours."
+                    )
+            except Exception as _sub_err:
+                st.error(f"Could not subscribe: {_sub_err}")

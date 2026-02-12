@@ -7,3 +7,8 @@ showSidebarNavigation = false
 
 [browser]
 gatherUsageStats = false
+
+[theme]
+primaryColor = "#667eea"
+secondaryBackgroundColor = "#f8fafc"
+textColor = "#1e293b"
