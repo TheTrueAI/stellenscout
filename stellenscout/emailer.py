@@ -36,10 +36,20 @@ def _build_job_row(job: dict) -> str:
     </tr>"""
 
 
+def _impressum_line() -> str:
+    """Return a one-line impressum string for email footers (§ 5 DDG)."""
+    name = os.environ.get("IMPRESSUM_NAME", "")
+    address = os.environ.get("IMPRESSUM_ADDRESS", "").replace("\n", ", ")
+    email = os.environ.get("IMPRESSUM_EMAIL", "")
+    parts = [p for p in (name, address, email) if p]
+    return " · ".join(parts) if parts else "StellenScout"
+
+
 def _build_html(jobs: list[dict], unsubscribe_url: str = "") -> str:
     """Build a full HTML email body for the daily digest."""
     today = datetime.now(timezone.utc).strftime("%B %d, %Y")
     rows = "\n".join(_build_job_row(j) for j in jobs)
+    impressum = _impressum_line()
 
     return f"""\
 <!DOCTYPE html>
@@ -87,7 +97,7 @@ def _build_html(jobs: list[dict], unsubscribe_url: str = "") -> str:
     <div style="padding:16px 24px;background:#f9fafb;
                 border-top:1px solid #e5e7eb;text-align:center;
                 color:#9ca3af;font-size:12px">
-      Sent by StellenScout &middot; AI-powered job matching for Europe
+      {impressum}
       {f'<br><a href="{unsubscribe_url}" style="color:#9ca3af">Unsubscribe</a>' if unsubscribe_url else ""}
     </div>
   </div>
@@ -152,6 +162,7 @@ def send_verification_email(email: str, verify_url: str) -> dict:
 
     resend.api_key = api_key
     from_addr = os.environ.get("RESEND_FROM", "StellenScout <digest@stellenscout.dev>")
+    impressum = _impressum_line()
 
     html = f"""\
 <!DOCTYPE html>
@@ -187,7 +198,7 @@ def send_verification_email(email: str, verify_url: str) -> dict:
     <div style="padding:16px 24px;background:#f9fafb;
                 border-top:1px solid #e5e7eb;text-align:center;
                 color:#9ca3af;font-size:12px">
-      StellenScout &middot; AI-powered job matching
+      {impressum}
     </div>
   </div>
 </body>

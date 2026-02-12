@@ -481,7 +481,7 @@ if not has_cv:
             help="Supported formats: PDF, DOCX, Markdown, plain text. Your file stays private.",
             key="hero_cv_upload",
         )
-        st.caption("Your CV is analyzed securely and never shared with third parties.")
+        st.caption("Your CV is processed securely via AI. See our [Privacy Policy](/privacy) for details.")
 
     # Recent DB jobs below
     try:
@@ -857,7 +857,7 @@ if st.session_state.evaluated_jobs is not None:
                 type="primary",
             )
         sub_consent = st.checkbox(
-            "I agree to the [Privacy Policy](/privacy)",
+            "I agree to receive daily job match emails. See our [Privacy Policy](/privacy).",
             value=False,
         )
 

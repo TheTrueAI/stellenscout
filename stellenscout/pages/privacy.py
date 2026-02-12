@@ -34,7 +34,7 @@ When you subscribe to our email digest, we process the following data:
 
 - **Email address** — to deliver the daily job digest
 - **Subscription status** — whether you have actively confirmed your subscription
-- **Timestamps** — when you signed up
+- **Timestamps** — when you signed up and confirmed
 
 ### 2b. CV / Resume Analysis
 
@@ -43,6 +43,7 @@ When you upload a CV for job matching, we process:
 - **CV text content** — extracted from your uploaded file (PDF, DOCX, etc.)
 - **Candidate profile** — structured data derived from your CV, including skills,
   experience level, roles, languages, education, and certifications
+- **Search queries** — generated from your profile and sent to job search services
 
 Your CV text and derived profile are sent to the **Google Gemini API** for
 AI-powered candidate profiling and job evaluation. **Google does not use your
@@ -52,6 +53,10 @@ obligations, after which they are deleted. Your uploaded CV file is not
 permanently stored by StellenScout — it is processed in memory and discarded
 after analysis.
 
+Search queries derived from your profile are sent to **SerpAPI** to retrieve
+job listings. These queries may contain skills, job titles, and location
+information from your profile.
+
 For details, see Google's
 [Gemini API Data Logging Policy](https://ai.google.dev/gemini-api/docs/logs-policy)
 and [Gemini API Terms of Service](https://ai.google.dev/gemini-api/terms).
@@ -60,7 +65,7 @@ and [Gemini API Terms of Service](https://ai.google.dev/gemini-api/terms).
 
 - **Email digest:** Processing is based on your **consent** (Art. 6(1)(a) GDPR).
   You gave consent through the Double Opt-In process and may withdraw it at any
-  time (see Section 8).
+  time (see Section 9).
 - **CV analysis:** Processing is based on your **consent** (Art. 6(1)(a) GDPR),
   given by uploading your CV and initiating the job search.
 
@@ -74,44 +79,74 @@ We use the following services to operate StellenScout:
 | **Resend** | Resend Inc., USA | Email delivery | [resend.com/legal/privacy-policy](https://resend.com/legal/privacy-policy) |
 | **Streamlit** | Snowflake Inc., USA | Web application hosting | [streamlit.io/privacy-policy](https://streamlit.io/privacy-policy) |
 | **Google AI (Gemini)** | Google LLC, USA | AI-powered CV analysis and job evaluation. CV text and candidate profiles are sent to the Gemini API. Data retained for up to 30 days for abuse monitoring. | [Gemini API Terms](https://ai.google.dev/gemini-api/terms) · [Data Logging Policy](https://ai.google.dev/gemini-api/docs/logs-policy) |
+| **SerpAPI** | SerpApi LLC, USA | Job search. Search queries derived from your profile (skills, job titles, location) are sent to retrieve job listings. | [serpapi.com/legal](https://serpapi.com/legal) |
 
 Data transfers to the USA are covered by each provider's Standard Contractual
 Clauses (SCCs). Google's processing is governed by the
 [Google Data Processing Addendum](https://cloud.google.com/terms/data-processing-addendum)
 applicable to Paid Services.
 
-## 5. Data Retention
+## 5. Use of Artificial Intelligence
+
+StellenScout uses AI (Google Gemini) to:
+
+1. **Analyze your CV** and extract a structured candidate profile (skills,
+   experience, roles, etc.).
+2. **Generate search queries** tailored to your profile and target location.
+3. **Evaluate and score** job listings against your profile on a 0–100 scale.
+4. **Generate a career summary** with market insights based on your matches.
+
+These AI-generated scores and assessments are **informational aids** to help you
+discover relevant job openings. They do not constitute automated
+decision-making with legal effect in the sense of Art. 22 GDPR — no hiring
+decisions, applications, or contractual consequences result from these scores.
+You are free to disregard the scores and apply to any job you choose.
+
+If you have questions about how the AI evaluation works, contact us at
+**{_email}**.
+
+## 6. Data Retention
 
 - **Email address** — stored as long as your subscription is active. After
-  unsubscribing, your record is deactivated. You may request complete deletion
-  at any time (see Section 8).
+  unsubscribing, your record is deactivated and retained for up to **30 days**
+  before automatic deletion. You may request immediate deletion at any time (see
+  Section 9).
 - **CV / Resume** — processed in memory only; not permanently stored by
   StellenScout. Cached analysis results are stored locally on the server for up
   to 24 hours to avoid redundant processing, then automatically deleted.
 - **Google Gemini API** — may retain inputs and outputs for up to 30 days for
   abuse monitoring and legal compliance.
 
-## 6. Cookies
+## 7. Cookies
 
 StellenScout does **not** use tracking cookies. Streamlit sets technically
 necessary session cookies required for the application to function.
 
-## 7. International Data Transfers
+## 8. International Data Transfers
 
 Your data may be transferred to and processed in the **United States** by the
 third-party services listed in Section 4. These transfers are safeguarded by
 Standard Contractual Clauses (SCCs) and, where applicable, the EU–US Data
 Privacy Framework.
 
-## 8. Your Rights (Art. 15–17, 77 GDPR)
+## 9. Your Rights (GDPR)
 
 You have the right to:
 
 - **Access** (Art. 15 GDPR) — request what data we hold about you
 - **Rectification** (Art. 16 GDPR) — correct inaccurate data
 - **Erasure** (Art. 17 GDPR) — request deletion of your personal data
-- **Withdraw consent** — at any time, e.g. via the unsubscribe link in every email
-- **Lodge a complaint** (Art. 77 GDPR) — with a supervisory authority
+- **Restriction of processing** (Art. 18 GDPR) — request that we limit how we
+  use your data
+- **Data portability** (Art. 20 GDPR) — receive your data in a structured,
+  machine-readable format
+- **Withdraw consent** — at any time, e.g. via the unsubscribe link in every
+  email
+- **Lodge a complaint** (Art. 77 GDPR) — with a supervisory authority. You may
+  contact the data protection authority in your country of residence, or the
+  authority responsible for the data controller's location. A list of EU
+  supervisory authorities is available at
+  [edpb.europa.eu](https://edpb.europa.eu/about-edpb/about-edpb/members_en).
 
 Contact us at **{_email}** to exercise your rights.
 """)
