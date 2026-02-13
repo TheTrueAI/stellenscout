@@ -115,13 +115,14 @@ This document defines the persona, context, and instruction sets for the AI agen
 **Output:** A markdown-formatted career summary string (not JSON).
 
 **System Prompt:**
-> You are a career advisor. Given a candidate profile and their evaluated job matches, write a brief summary.
+> You are a career advisor. Given a candidate profile and their evaluated job matches, write a very brief summary. Use a friendly and encouraging tone, but be honest about the fit. Focus on actionable insights. Use emojis to make it more engaging.
 >
-> Structure your response with these sections:
+> Structure your response in plain text with these sections:
 > 1. **Market Overview** (2-3 sentences): How well does this candidate fit the current job market? How many strong matches vs weak ones?
-> 2. **Top Opportunities** (bullet list): The 3-5 strongest matching roles/companies and why they stand out.
-> 3. **Skill Gaps** (bullet list): The most frequently missing skills across job listings. Prioritise by how often they appear.
-> 4. **Career Advice** (2-3 sentences): Actionable next steps — certifications to pursue, skills to learn, or positioning tips.
+> 2. **Skill Gaps** (bullet list): The most frequently missing skills across job listings. Prioritise by how often they appear.
+> 3. **Career Advice** (2-3 sentences): Actionable next steps — certifications to pursue, skills to learn, or positioning tips.
+>
+> Be concise and specific to THIS candidate. Use markdown formatting.
 
 **Generation Config:**
 - Temperature: 0.5
@@ -163,7 +164,7 @@ SERPAPI_PARAMS = {
 
 Jobs from the following portals are discarded during search result parsing (see `search_agent.py:_BLOCKED_PORTALS`):
 
-> bebee, trabajo, jooble, adzuna, jobrapido, neuvoo, mitula, trovit, jobomas, jobijoba, talent, jobatus, jobsora, studysmarter, jobilize, learn4good, grabjobs, jobtensor
+> bebee, trabajo, jooble, adzuna, jobrapido, neuvoo, mitula, trovit, jobomas, jobijoba, talent, jobatus, jobsora, studysmarter, jobilize, learn4good, grabjobs, jobtensor, zycto, terra.do, jobzmall, simplyhired
 
 Listings with no remaining apply links after filtering are skipped entirely.
 
@@ -171,17 +172,19 @@ Listings with no remaining apply links after filtering are skipped entirely.
 
 ## 6. Pydantic Schemas
 
+All models use `Field()` with descriptions and defaults where appropriate.
+
 ```python
 class CandidateProfile(BaseModel):
     skills: list[str]                    # 15-20 hard skills
     experience_level: Literal["Junior", "Mid", "Senior", "Lead", "CTO"]
-    years_of_experience: int             # calculated from work history
+    years_of_experience: int = 0         # calculated from work history
     roles: list[str]                     # 5 titles, EN + local language
     languages: list[str]                 # with proficiency levels
     domain_expertise: list[str]
-    certifications: list[str]            # empty list if none
-    education: list[str]                 # degree + university
-    summary: str                         # 2-3 sentence professional summary
+    certifications: list[str] = []       # empty list if none
+    education: list[str] = []            # degree + university
+    summary: str = ""                    # 2-3 sentence professional summary
 
 class ApplyOption(BaseModel):
     source: str                          # e.g., "LinkedIn", "Company Website"
@@ -191,15 +194,15 @@ class JobListing(BaseModel):
     title: str
     company_name: str
     location: str
-    description: str
-    link: str
-    posted_at: str
-    apply_options: list[ApplyOption]     # direct apply links (LinkedIn, career page, etc.)
+    description: str = ""
+    link: str = ""
+    posted_at: str = ""
+    apply_options: list[ApplyOption] = []  # direct apply links (LinkedIn, career page, etc.)
 
 class JobEvaluation(BaseModel):
-    score: int                           # 0-100
+    score: int                           # 0-100, constrained ge=0 le=100
     reasoning: str
-    missing_skills: list[str]
+    missing_skills: list[str] = []
 
 class EvaluatedJob(BaseModel):
     job: JobListing
@@ -235,14 +238,30 @@ All pipeline results are cached to JSON in `.stellenscout_cache/` to minimize AP
 ### CLI (`main.py`)
 - Entry point: `stellenscout <cv_path> [--location] [--min-score] [--jobs-per-query] [--num-queries] [--no-cache]`
 - Rich terminal UI with spinners, colored tables, and detailed match view
-- After evaluation, displays a career summary panel (Market Overview, Top Opportunities, Skill Gaps, Career Advice) above the results table
+- After evaluation, displays a career summary panel (Market Overview, Skill Gaps, Career Advice) above the results table
 
 ### Streamlit Web UI (`app.py`)
+
+Three-phase UI flow:
+- **Phase A (Landing):** Hero section, CV consent checkbox, file uploader, recent DB jobs
+- **Phase B (CV uploaded):** Location input form, AI profile display, "Find Jobs" button
+- **Phase C (Results):** Filterable/sortable job cards, career summary, newsletter subscription
+
+Features:
 - Session-scoped cache directories under `.stellenscout_cache/<cv_file_hash>/`
 - Auto-cleanup of session caches older than 24 hours (max 50 sessions)
-- Sidebar: CV upload, location input, min score slider
-- Main area: profile display, search queries expander, career summary expander, filterable/sortable job cards with direct apply buttons (LinkedIn, career page, etc.)
+- Sidebar: status panel, min score slider, secondary CV uploader, legal links
+- GDPR consent checkbox required before CV upload (consent text versioned as `_CONSENT_TEXT_VERSION`)
+- CV file size limit: 5 MB; text truncated at 50,000 chars
+- Rate limiting: 30-second cooldown between pipeline runs
+- Newsletter subscription with Double Opt-In (see §10)
 - API keys via `.streamlit/secrets.toml` or environment variables
+
+### Streamlit Pages
+- `pages/verify.py` — Email verification endpoint (`/verify?token=...`)
+- `pages/unsubscribe.py` — One-click unsubscribe endpoint (`/unsubscribe?token=...`)
+- `pages/impressum.py` — Legal notice (§ 5 DDG)
+- `pages/privacy.py` — Privacy policy
 
 ---
 
@@ -252,3 +271,94 @@ Supported formats:
 - `.pdf` — via `pdfplumber`
 - `.docx` — via `python-docx`
 - `.md`, `.txt` — direct file read (UTF-8)
+
+---
+
+## 10. Email & Subscriptions
+
+### Double Opt-In Flow
+1. User enters email + checks consent in the subscribe form
+2. `db.add_subscriber()` creates a pending row with `is_active=False` and a `confirmation_token` (24-hour expiry)
+3. `emailer.send_verification_email()` sends a confirmation link via Resend
+4. User clicks the link → `pages/verify.py` calls `db.confirm_subscriber()` → sets `is_active=True`
+5. If email already active, the form shows "already subscribed" (no re-send)
+
+### Unsubscribe Flow
+- Each daily digest email includes a `List-Unsubscribe` header and footer link
+- `daily_task.py` generates a one-time `unsubscribe_token` (30-day expiry) per subscriber per run via `db.issue_unsubscribe_token()`
+- `pages/unsubscribe.py` validates the token and calls `db.deactivate_subscriber_by_token()`
+
+### Daily Digest (`daily_task.py`)
+Designed to run in GitHub Actions (or any cron scheduler):
+1. Parse CV and build candidate profile
+2. Generate search queries and fetch jobs from SerpApi
+3. Evaluate each job against the profile
+4. Filter out jobs already in Supabase → save new ones via `db.upsert_jobs()`
+5. For each active subscriber, email only unseen jobs and update `job_sent_logs`
+6. Purge inactive subscribers older than 30 days via `db.purge_inactive_subscribers()`
+
+Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`, `CV_PATH`, `TARGET_LOCATION`, `MIN_SCORE`.
+
+### Email Templates (`emailer.py`)
+- `send_daily_digest()` — HTML table of job matches with score badges and apply links
+- `send_verification_email()` — CTA button linking to the verify page
+- Both include an impressum footer line built from `IMPRESSUM_NAME`, `IMPRESSUM_ADDRESS`, `IMPRESSUM_EMAIL` env vars
+
+---
+
+## 11. Database (`db.py` + `setup_db.py`)
+
+**Provider:** Supabase (Postgres)
+
+### Two client types
+- `get_client()` — uses `SUPABASE_KEY` (anon/publishable), subject to RLS
+- `get_admin_client()` — uses `SUPABASE_SERVICE_KEY` (service-role), bypasses RLS; required for all writes
+
+### Tables
+
+```sql
+subscribers (
+    id UUID PK,
+    email TEXT UNIQUE,
+    is_active BOOLEAN DEFAULT FALSE,
+    confirmation_token TEXT,
+    token_expires_at TIMESTAMPTZ,
+    consent_text_version TEXT,
+    signup_ip TEXT,
+    signup_user_agent TEXT,
+    confirmed_at TIMESTAMPTZ,
+    confirm_ip TEXT,
+    confirm_user_agent TEXT,
+    unsubscribe_token TEXT,
+    unsubscribe_token_expires_at TIMESTAMPTZ,
+    unsubscribed_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT now()
+)
+
+jobs (
+    id UUID PK,
+    title TEXT,
+    company TEXT,
+    url TEXT UNIQUE,
+    location TEXT,
+    created_at TIMESTAMPTZ DEFAULT now()
+)
+
+job_sent_logs (
+    id UUID PK,
+    subscriber_id UUID FK → subscribers(id) ON DELETE CASCADE,
+    job_id UUID FK → jobs(id) ON DELETE CASCADE,
+    sent_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE (subscriber_id, job_id)
+)
+```
+
+### Key operations
+- `add_subscriber()` — upsert pending subscriber; returns existing row if already active
+- `confirm_subscriber()` — activate by token (checks expiry)
+- `deactivate_subscriber()` / `deactivate_subscriber_by_token()` — unsubscribe
+- `purge_inactive_subscribers()` — delete inactive rows older than N days (chunked deletes)
+- `upsert_jobs()` — insert jobs, skip duplicates by URL
+- `get_sent_job_ids()` / `log_sent_jobs()` — track which jobs were emailed to which subscriber
+
+Schema setup: run `python setup_db.py` to check tables and print migration SQL.
