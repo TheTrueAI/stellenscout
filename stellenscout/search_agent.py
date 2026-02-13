@@ -28,6 +28,10 @@ _BLOCKED_PORTALS = {
     "learn4good",
     "grabjobs",
     "jobtensor",
+    "zycto",
+    "terra.do",
+    "jobzmall",
+    "simplyhired",
 }
 
 # Map country/city names to Google gl= codes so SerpApi doesn't default to "us"
@@ -331,6 +335,7 @@ def search_all_queries(
     jobs_per_query: int = 10,
     location: str = "",
     min_unique_jobs: int = 50,
+    on_progress: "None | callable" = None,
 ) -> list[JobListing]:
     """
     Search for jobs across multiple queries and deduplicate results.
@@ -345,6 +350,8 @@ def search_all_queries(
         jobs_per_query: Number of jobs to fetch per query.
         location: Target location to append to queries missing one.
         min_unique_jobs: Stop after collecting this many unique jobs (0 to disable).
+        on_progress: Optional callback(query_index, total_queries, unique_jobs_count)
+            invoked after each query completes.
 
     Returns:
         Deduplicated list of job listings.
@@ -366,7 +373,7 @@ def search_all_queries(
 
     all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
 
-    for query in queries:
+    for qi, query in enumerate(queries, 1):
         # If the query doesn't already mention a location, append one
         query_lower = query.lower()
         has_location = any(kw in query_lower for kw in _location_words)
@@ -380,6 +387,9 @@ def search_all_queries(
             key = f"{job.title}|{job.company_name}"
             if key not in all_jobs:
                 all_jobs[key] = job
+
+        if on_progress is not None:
+            on_progress(qi, len(queries), len(all_jobs))
 
         if min_unique_jobs and len(all_jobs) >= min_unique_jobs:
             break

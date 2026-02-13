@@ -25,3 +25,9 @@ python-dotenv>=1.0.0
 # Web UI (optional)
 streamlit>=1.30.0
 pandas>=2.0.0
+
+# Database (Supabase / Postgres)
+supabase>=2.0.0
+
+# Email service
+resend>=2.0.0
