@@ -144,6 +144,18 @@ def get_active_subscribers(client: Client) -> list[dict]:
     )
 
 
+def get_subscriber_by_email(client: Client, email: str) -> dict | None:
+    """Return a subscriber row by email, or None if not found."""
+    rows = (
+        client.table("subscribers")
+        .select("*")
+        .eq("email", email)
+        .execute()
+        .data
+    )
+    return rows[0] if rows else None
+
+
 def get_all_subscribers(client: Client) -> list[dict]:
     """Return all subscriber rows."""
     return client.table("subscribers").select("*").execute().data
@@ -209,12 +221,16 @@ def deactivate_subscriber_by_token(client: Client, token: str) -> bool:
     if exp_dt and datetime.now(timezone.utc) > exp_dt:
         return False
 
-    return deactivate_subscriber(client, sub["id"])
+    success = deactivate_subscriber(client, sub["id"])
+    if success:
+        delete_subscriber_data(client, sub["id"])
+    return success
 
 
-def purge_inactive_subscribers(client: Client, older_than_days: int = 30) -> int:
+def purge_inactive_subscribers(client: Client, older_than_days: int = 7) -> int:
     """Delete inactive subscribers after a retention window.
 
+    Also deletes all associated data (job_sent_logs cascade via FK).
     Returns the number of deleted rows.
     """
     rows: list[dict[str, Any]] = (
@@ -252,6 +268,122 @@ def purge_inactive_subscribers(client: Client, older_than_days: int = 30) -> int
 
 
 # ---------------------------------------------------------------------------
+# Subscription context (per-subscriber profile, queries, location)
+# ---------------------------------------------------------------------------
+
+def save_subscription_context(
+    client: Client,
+    subscriber_id: str,
+    profile_json: dict,
+    search_queries: list[str],
+    target_location: str,
+    min_score: int = 70,
+) -> bool:
+    """Store the candidate profile, queries, and location for a subscriber.
+
+    Called at subscribe time from app.py so the daily task can reuse them.
+    """
+    result = (
+        client.table("subscribers")
+        .update(
+            {
+                "profile_json": profile_json,
+                "search_queries": search_queries,
+                "target_location": target_location,
+                "min_score": min_score,
+            }
+        )
+        .eq("id", subscriber_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def set_subscriber_expiry(
+    client: Client,
+    subscriber_id: str,
+    expires_at: str,
+) -> bool:
+    """Set the auto-expiry timestamp (e.g. confirmed_at + 30 days).
+
+    Called from pages/verify.py upon DOI confirmation.
+    """
+    result = (
+        client.table("subscribers")
+        .update({"expires_at": expires_at})
+        .eq("id", subscriber_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def expire_subscriptions(client: Client) -> int:
+    """Deactivate subscriptions whose expires_at has passed.
+
+    Returns the number of expired rows.
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    # Fetch active subscribers with an expiry in the past
+    rows = (
+        client.table("subscribers")
+        .select("id")
+        .eq("is_active", True)
+        .not_.is_("expires_at", "null")
+        .lte("expires_at", now_iso)
+        .execute()
+        .data
+    )
+    if not rows:
+        return 0
+
+    ids = [r["id"] for r in rows]
+    for sid in ids:
+        deactivate_subscriber(client, sid)
+        delete_subscriber_data(client, sid)
+    return len(ids)
+
+
+def delete_subscriber_data(client: Client, subscriber_id: str) -> None:
+    """Wipe PII (profile, queries) from a subscriber row.
+
+    job_sent_logs are cascade-deleted when the subscriber row is
+    eventually purged.  Here we just clear the JSONB columns.
+    """
+    client.table("subscribers").update(
+        {
+            "profile_json": None,
+            "search_queries": None,
+            "target_location": None,
+            "min_score": None,
+        }
+    ).eq("id", subscriber_id).execute()
+
+
+def get_active_subscribers_with_profiles(client: Client) -> list[dict]:
+    """Return active, non-expired subscribers that have a stored profile.
+
+    Only returns rows where profile_json is not null (subscribers who
+    completed the full subscribe flow in the Streamlit UI).
+    """
+    now_iso = datetime.now(timezone.utc).isoformat()
+    rows = (
+        client.table("subscribers")
+        .select("*")
+        .eq("is_active", True)
+        .not_.is_("profile_json", "null")
+        .execute()
+        .data
+    )
+    # Filter out expired (belt-and-suspenders — expire_subscriptions()
+    # should have already run, but be safe).
+    return [
+        r for r in rows
+        if not r.get("expires_at")
+        or _parse_iso_utc(r["expires_at"]) > datetime.now(timezone.utc)  # type: ignore[operator]
+    ]
+
+
+# ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
 
@@ -259,7 +391,7 @@ def upsert_jobs(client: Client, jobs: list[dict]) -> list[dict]:
     """Insert jobs, skipping duplicates by URL.
 
     Each dict must have: title, company, url.
-    Optional: location.
+    Optional: location, description.
     Returns the upserted rows.
     """
     if not jobs:
@@ -270,6 +402,7 @@ def upsert_jobs(client: Client, jobs: list[dict]) -> list[dict]:
             "company": j["company"],
             "url": j["url"],
             **({"location": j["location"]} if j.get("location") else {}),
+            **({"description": j["description"]} if j.get("description") else {}),
         }
         for j in jobs
     ]
@@ -304,6 +437,20 @@ def get_existing_urls(client: Client, urls: list[str]) -> set[str]:
         .data
     )
     return {r["url"] for r in rows}
+
+
+def get_job_ids_by_urls(client: Client, urls: list[str]) -> dict[str, str]:
+    """Return a mapping of URL → job UUID for the given URLs."""
+    if not urls:
+        return {}
+    rows = (
+        client.table("jobs")
+        .select("id, url")
+        .in_("url", urls)
+        .execute()
+        .data
+    )
+    return {r["url"]: r["id"] for r in rows}
 
 
 # ---------------------------------------------------------------------------

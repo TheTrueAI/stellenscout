@@ -279,25 +279,47 @@ Supported formats:
 ### Double Opt-In Flow
 1. User enters email + checks consent in the subscribe form
 2. `db.add_subscriber()` creates a pending row with `is_active=False` and a `confirmation_token` (24-hour expiry)
-3. `emailer.send_verification_email()` sends a confirmation link via Resend
-4. User clicks the link → `pages/verify.py` calls `db.confirm_subscriber()` → sets `is_active=True`
-5. If email already active, the form shows "already subscribed" (no re-send)
+3. `db.save_subscription_context()` stores the candidate's `profile_json`, `search_queries`, `target_location`, and `min_score` on the subscriber row
+4. Jobs already displayed in the UI session are pre-seeded into `job_sent_logs` via `db.upsert_jobs()` + `db.log_sent_jobs()` so the first digest doesn't repeat them
+5. `emailer.send_verification_email()` sends a confirmation link via Resend
+6. User clicks the link → `pages/verify.py` calls `db.confirm_subscriber()` → sets `is_active=True`, then `db.set_subscriber_expiry()` sets `expires_at = now() + 30 days`
+7. If email already active, the form shows "already subscribed" (no re-send)
+
+### Auto-Expiry
+- The 30-day clock starts at **DOI confirmation**, not signup (prevents wasted days while email is unconfirmed)
+- `daily_task.py` calls `db.expire_subscriptions()` at the start of each run to deactivate expired subscribers
+- On expiry, `db.delete_subscriber_data()` immediately wipes `profile_json`, `search_queries`, `target_location` (GDPR)
+- Expired subscriber rows are purged after 7 days via `db.purge_inactive_subscribers()`
 
 ### Unsubscribe Flow
 - Each daily digest email includes a `List-Unsubscribe` header and footer link
 - `daily_task.py` generates a one-time `unsubscribe_token` (30-day expiry) per subscriber per run via `db.issue_unsubscribe_token()`
-- `pages/unsubscribe.py` validates the token and calls `db.deactivate_subscriber_by_token()`
+- `pages/unsubscribe.py` validates the token and calls `db.deactivate_subscriber_by_token()` which also calls `db.delete_subscriber_data()` to immediately wipe PII
+
+### Re-subscription
+- After expiry or unsubscribe, a user must start fresh: new CV upload, new session, new subscribe flow
+- Old profile data is already deleted; there is no grace period
 
 ### Daily Digest (`daily_task.py`)
-Designed to run in GitHub Actions (or any cron scheduler):
-1. Parse CV and build candidate profile
-2. Generate search queries and fetch jobs from SerpApi
-3. Evaluate each job against the profile
-4. Filter out jobs already in Supabase → save new ones via `db.upsert_jobs()`
-5. For each active subscriber, email only unseen jobs and update `job_sent_logs`
-6. Purge inactive subscribers older than 30 days via `db.purge_inactive_subscribers()`
+Per-subscriber pipeline, designed to run in GitHub Actions (or any cron scheduler):
+1. Expire subscriptions past their 30-day window via `db.expire_subscriptions()`
+2. Purge inactive subscriber rows older than 7 days via `db.purge_inactive_subscribers()`
+3. Load all active subscribers with stored profiles via `db.get_active_subscribers_with_profiles()`
+4. Aggregate & deduplicate search queries across all subscribers by location
+5. Search once per unique (query, location) pair — saves SerpApi quota
+6. Upsert all found jobs into DB with descriptions
+7. For each subscriber:
+   a. Reconstruct `CandidateProfile` from stored `profile_json`
+   b. Filter out jobs already in their `job_sent_logs`
+   c. Evaluate unseen jobs against their profile (Gemini)
+   d. Filter by their `min_score` threshold
+   e. Send daily digest email (with unsubscribe token)
+   f. Log ALL evaluated jobs (not just good matches) to avoid re-evaluation
+8. Exit
 
-Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`, `CV_PATH`, `TARGET_LOCATION`, `MIN_SCORE`.
+Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`.
+
+**Removed env vars:** `CV_PATH`, `TARGET_LOCATION`, `MIN_SCORE` are no longer needed — each subscriber's profile, location, and score threshold are stored in the database.
 
 ### Email Templates (`emailer.py`)
 - `send_daily_digest()` — HTML table of job matches with score badges and apply links
@@ -332,6 +354,11 @@ subscribers (
     unsubscribe_token TEXT,
     unsubscribe_token_expires_at TIMESTAMPTZ,
     unsubscribed_at TIMESTAMPTZ,
+    profile_json JSONB,              -- serialized CandidateProfile
+    search_queries JSONB,            -- list of query strings
+    target_location TEXT,            -- e.g. "Munich, Germany"
+    min_score INT DEFAULT 70,        -- score threshold
+    expires_at TIMESTAMPTZ,          -- auto-expiry (confirmed_at + 30 days)
     created_at TIMESTAMPTZ DEFAULT now()
 )
 
@@ -341,6 +368,7 @@ jobs (
     company TEXT,
     url TEXT UNIQUE,
     location TEXT,
+    description TEXT,                -- full job description for cross-subscriber evaluation
     created_at TIMESTAMPTZ DEFAULT now()
 )
 
@@ -355,10 +383,17 @@ job_sent_logs (
 
 ### Key operations
 - `add_subscriber()` — upsert pending subscriber; returns existing row if already active
+- `save_subscription_context()` — store profile, queries, location, min_score on subscriber row
+- `set_subscriber_expiry()` — set `expires_at` (called on DOI confirmation)
 - `confirm_subscriber()` — activate by token (checks expiry)
-- `deactivate_subscriber()` / `deactivate_subscriber_by_token()` — unsubscribe
-- `purge_inactive_subscribers()` — delete inactive rows older than N days (chunked deletes)
-- `upsert_jobs()` — insert jobs, skip duplicates by URL
-- `get_sent_job_ids()` / `log_sent_jobs()` — track which jobs were emailed to which subscriber
+- `deactivate_subscriber()` / `deactivate_subscriber_by_token()` — unsubscribe + delete PII
+- `expire_subscriptions()` — auto-deactivate + delete data for expired subscribers
+- `delete_subscriber_data()` — wipe profile_json, search_queries, target_location
+- `purge_inactive_subscribers()` — delete inactive rows older than 7 days (chunked deletes)
+- `get_active_subscribers_with_profiles()` — active, non-expired subscribers with stored profiles
+- `upsert_jobs()` — insert jobs (with descriptions), skip duplicates by URL
+- `get_job_ids_by_urls()` — map URLs to DB UUIDs
+- `get_sent_job_ids()` / `log_sent_jobs()` — track which jobs were emailed/shown to which subscriber
+- `get_subscriber_by_email()` — look up subscriber by email
 
 Schema setup: run `python setup_db.py` to check tables and print migration SQL.

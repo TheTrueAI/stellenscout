@@ -34,12 +34,19 @@ CREATE TABLE IF NOT EXISTS subscribers (
     unsubscribe_token   TEXT,
     unsubscribe_token_expires_at TIMESTAMPTZ,
     unsubscribed_at     TIMESTAMPTZ,
+    profile_json        JSONB,
+    search_queries      JSONB,
+    target_location     TEXT,
+    min_score           INT DEFAULT 70,
+    expires_at          TIMESTAMPTZ,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_subscribers_token
     ON subscribers (confirmation_token) WHERE confirmation_token IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_subscribers_unsubscribe_token
     ON subscribers (unsubscribe_token) WHERE unsubscribe_token IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_subscribers_expires
+    ON subscribers (expires_at) WHERE is_active = TRUE AND expires_at IS NOT NULL;
 
 -- ── jobs ─────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS jobs (
@@ -48,6 +55,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     company     TEXT NOT NULL,
     url         TEXT NOT NULL UNIQUE,
     location    TEXT,
+    description TEXT,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -83,6 +91,19 @@ CREATE INDEX IF NOT EXISTS idx_subscribers_unsubscribe_token
         ON subscribers (unsubscribe_token) WHERE unsubscribe_token IS NOT NULL;
 -- Existing subscribers stay active:
 UPDATE subscribers SET is_active = TRUE WHERE is_active IS NULL;
+
+-- ── Migration: per-subscriber profile & auto-expiry ─────────────────
+ALTER TABLE subscribers
+    ADD COLUMN IF NOT EXISTS profile_json JSONB,
+    ADD COLUMN IF NOT EXISTS search_queries JSONB,
+    ADD COLUMN IF NOT EXISTS target_location TEXT,
+    ADD COLUMN IF NOT EXISTS min_score INT DEFAULT 70,
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+CREATE INDEX IF NOT EXISTS idx_subscribers_expires
+    ON subscribers (expires_at) WHERE is_active = TRUE AND expires_at IS NOT NULL;
+
+-- ── Migration: add description column to jobs ───────────────────────
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS description TEXT;
 """
 
 REQUIRED_TABLES = ["subscribers", "jobs", "job_sent_logs"]
