@@ -23,7 +23,6 @@ import sys
 import secrets
 from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -35,7 +34,6 @@ from stellenscout.evaluator_agent import evaluate_all_jobs
 from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing
 from stellenscout.db import (
     get_admin_client as get_db,
-    get_existing_urls,
     upsert_jobs,
     get_sent_job_ids,
     log_sent_jobs,
@@ -54,10 +52,21 @@ logging.basicConfig(
 log = logging.getLogger("daily_task")
 
 
+def _listing_url(job: JobListing) -> str:
+    """Get the best URL for a JobListing (prefer first apply option, fall back to link)."""
+    if job.apply_options:
+        url = getattr(job.apply_options[0], "url", None)
+        if url:
+            return url
+    return job.link or ""
+
+
 def _job_url(ej: EvaluatedJob) -> str:
-    """Get the best URL for a job (prefer first apply option, fall back to link)."""
+    """Get the best URL for an EvaluatedJob (prefer first apply option, fall back to link)."""
     if ej.job.apply_options:
-        return ej.job.apply_options[0].url
+        url = getattr(ej.job.apply_options[0], "url", None)
+        if url:
+            return url
     return ej.job.link or ""
 
 
@@ -110,7 +119,7 @@ def main() -> int:
             location=loc,
         )
         for job in found:
-            key = f"{job.title}|{job.company_name}"
+            key = f"{job.title}|{job.company_name}|{job.location}"
             if key not in all_jobs:
                 all_jobs[key] = job
 
@@ -123,7 +132,7 @@ def main() -> int:
     jobs_list = list(all_jobs.values())
     job_dicts = []
     for job in jobs_list:
-        url = (job.apply_options[0].url if job.apply_options else job.link) or ""
+        url = _listing_url(job)
         if url:
             job_dicts.append({
                 "title": job.title,
@@ -140,7 +149,7 @@ def main() -> int:
     # Build URL → JobListing lookup
     url_to_job: dict[str, JobListing] = {}
     for job in jobs_list:
-        url = (job.apply_options[0].url if job.apply_options else job.link) or ""
+        url = _listing_url(job)
         if url:
             url_to_job[url] = job
 
@@ -226,7 +235,10 @@ def main() -> int:
                 unsubscribe_url = f"{app_url}/unsubscribe?token={unsub_token}"
 
         log.info("  %s — sending %d matches (score >= %d)", sub_email, len(email_jobs), sub_min_score)
-        send_daily_digest(sub_email, email_jobs, unsubscribe_url=unsubscribe_url)
+        try:
+            send_daily_digest(sub_email, email_jobs, unsubscribe_url=unsubscribe_url)
+        except Exception:
+            log.exception("  %s — failed to send daily digest, continuing", sub_email)
 
         # Log ALL evaluated jobs (not just good matches) to avoid re-evaluation
         all_eval_ids = [

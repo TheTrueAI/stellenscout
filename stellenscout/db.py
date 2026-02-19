@@ -6,6 +6,9 @@ from datetime import datetime, timezone
 
 from supabase import create_client, Client
 
+# Number of days a confirmed subscription is active before auto-expiry.
+SUBSCRIPTION_DAYS = 30
+
 
 def get_client() -> Client:
     """Create a read-only Supabase client (anon / publishable key).
@@ -337,10 +340,23 @@ def expire_subscriptions(client: Client) -> int:
         return 0
 
     ids = [r["id"] for r in rows]
+    processed_count = 0
     for sid in ids:
+        # Re-check is_active to guard against concurrent runs.
+        current = (
+            client.table("subscribers")
+            .select("is_active")
+            .eq("id", sid)
+            .maybe_single()
+            .execute()
+            .data
+        )
+        if not current or not current.get("is_active"):
+            continue
         deactivate_subscriber(client, sid)
         delete_subscriber_data(client, sid)
-    return len(ids)
+        processed_count += 1
+    return processed_count
 
 
 def delete_subscriber_data(client: Client, subscriber_id: str) -> bool:
