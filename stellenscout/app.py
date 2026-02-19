@@ -40,6 +40,7 @@ from stellenscout.search_agent import (  # noqa: E402
 from stellenscout.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from stellenscout.models import CandidateProfile, EvaluatedJob  # noqa: E402
 from stellenscout.cache import ResultCache  # noqa: E402
+from stellenscout.db import SUBSCRIPTION_DAYS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -897,7 +898,7 @@ if st.session_state.evaluated_jobs is not None:
                 type="primary",
             )
         sub_consent = st.checkbox(
-            "I agree to receive daily job match emails for 30 days. See our [Privacy Policy](/privacy).",
+            f"I agree to receive daily job match emails for {SUBSCRIPTION_DAYS} days. See our [Privacy Policy](/privacy).",
             value=False,
         )
 
@@ -941,7 +942,7 @@ if st.session_state.evaluated_jobs is not None:
                     _sub_row = get_subscriber_by_email(_db, sub_email.strip())
                     if _sub_row:
                         # Save profile, queries, location for the daily task
-                        save_subscription_context(
+                        _ctx_saved = save_subscription_context(
                             _db,
                             _sub_row["id"],
                             profile_json=st.session_state.profile.model_dump(),
@@ -949,37 +950,60 @@ if st.session_state.evaluated_jobs is not None:
                             target_location=st.session_state.location or "",
                             min_score=min_score,
                         )
-
-                        # Pre-seed job_sent_logs with jobs already displayed
-                        # so the first newsletter doesn't repeat them
-                        if st.session_state.evaluated_jobs:
-                            _seen_jobs = []
-                            for _ej in st.session_state.evaluated_jobs:
-                                _url = (_ej.job.apply_options[0].url if _ej.job.apply_options else _ej.job.link) or ""
-                                if _url:
-                                    _seen_jobs.append({
-                                        "title": _ej.job.title,
-                                        "company": _ej.job.company_name,
-                                        "url": _url,
-                                        "location": _ej.job.location,
-                                        "description": _ej.job.description,
-                                    })
-                            if _seen_jobs:
-                                _upsert_jobs(_db, _seen_jobs)
-                                _url_to_id = get_job_ids_by_urls(
-                                    _db, [j["url"] for j in _seen_jobs]
+                        if not _ctx_saved:
+                            logger.warning(
+                                "save_subscription_context returned False for subscriber %s",
+                                _sub_row["id"],
+                            )
+                            st.error(
+                                "Could not save your subscription context. Please try again."
+                            )
+                        else:
+                            # Pre-seed job_sent_logs with jobs already displayed
+                            # so the first newsletter doesn't repeat them
+                            try:
+                                if st.session_state.evaluated_jobs:
+                                    _seen_jobs = []
+                                    for _ej in st.session_state.evaluated_jobs:
+                                        _url = (
+                                            _ej.job.apply_options[0].url
+                                            if _ej.job.apply_options
+                                            else _ej.job.link
+                                        ) or ""
+                                        if _url:
+                                            _seen_jobs.append({
+                                                "title": _ej.job.title,
+                                                "company": _ej.job.company_name,
+                                                "url": _url,
+                                                "location": _ej.job.location,
+                                                "description": _ej.job.description,
+                                            })
+                                    if _seen_jobs:
+                                        _upsert_jobs(_db, _seen_jobs)
+                                        _url_to_id = get_job_ids_by_urls(
+                                            _db, [j["url"] for j in _seen_jobs]
+                                        )
+                                        _job_ids = list(_url_to_id.values())
+                                        if _job_ids:
+                                            log_sent_jobs(_db, _sub_row["id"], _job_ids)
+                            except Exception as _seed_err:
+                                logger.warning(
+                                    "Could not pre-seed sent jobs for %s: %s",
+                                    _sub_row["id"],
+                                    _seed_err,
                                 )
-                                _job_ids = list(_url_to_id.values())
-                                if _job_ids:
-                                    log_sent_jobs(_db, _sub_row["id"], _job_ids)
 
-                    _app_url = os.environ.get("APP_URL", "").rstrip("/")
-                    _verify_url = f"{_app_url}/verify?token={_token}"
-                    send_verification_email(sub_email.strip(), _verify_url)
-                    st.success(
-                        "Please check your inbox to confirm your subscription. "
-                        "The link is valid for 24 hours. "
-                        "You'll receive daily job matches for 30 days after confirming."
-                    )
+                            _app_url = os.environ.get("APP_URL", "").rstrip("/")
+                            _verify_url = f"{_app_url}/verify?token={_token}"
+                            send_verification_email(sub_email.strip(), _verify_url)
+                            st.success(
+                                "Please check your inbox to confirm your subscription. "
+                                "The link is valid for 24 hours. "
+                                f"You'll receive daily job matches for {SUBSCRIPTION_DAYS} days after confirming."
+                            )
+                    else:
+                        st.error(
+                            "Could not retrieve your subscription details. Please try again."
+                        )
             except Exception as _sub_err:
                 st.error(f"Could not subscribe: {_sub_err}")
