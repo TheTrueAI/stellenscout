@@ -1,51 +1,47 @@
 #!/usr/bin/env python3
 """StellenScout daily digest — designed to run in GitHub Actions.
 
-Steps:
-  1. Load CV text and build a candidate profile.
-  2. Generate search queries and fetch jobs from SerpApi.
-  3. Evaluate each job against the profile.
-  4. Filter out jobs already in Supabase → save new ones.
-  5. For each subscriber, email only unseen jobs and update job_sent_log.
+Per-subscriber pipeline:
+  1. Expire subscriptions past their 30-day window.
+  2. Load all active subscribers with saved profiles.
+  3. Aggregate & deduplicate search queries across subscribers.
+  4. Search once per unique (query, location) pair.
+  5. Upsert all found jobs into the DB (with descriptions).
+  6. For each subscriber: evaluate unseen jobs, filter, email, log.
 
 Required env vars:
     GOOGLE_API_KEY, SERPAPI_KEY          — existing search/LLM keys
-    SUPABASE_URL, SUPABASE_KEY          — Supabase credentials
-    RESEND_API_KEY                       — Resend email key
-    CV_PATH                             — path to the CV file (default: cv.pdf)
-    TARGET_LOCATION                     — job search location (default: "")
-    MIN_SCORE                           — minimum score to include (default: 70)
+    SUPABASE_URL, SUPABASE_KEY          — Supabase credentials (anon)
+    SUPABASE_SERVICE_KEY                — Supabase service-role key
+    RESEND_API_KEY, RESEND_FROM         — Resend email credentials
+    APP_URL                             — base URL of the Streamlit app
 """
 
 import logging
 import os
 import sys
 import secrets
+from collections import defaultdict
 from datetime import datetime, timezone, timedelta
-from pathlib import Path
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from stellenscout.cv_parser import extract_text
 from stellenscout.llm import create_client
-from stellenscout.search_agent import (
-    profile_candidate,
-    generate_search_queries,
-    search_all_queries,
-)
+from stellenscout.search_agent import search_all_queries
 from stellenscout.evaluator_agent import evaluate_all_jobs
-from stellenscout.models import EvaluatedJob
+from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing
 from stellenscout.db import (
     get_admin_client as get_db,
-    get_existing_urls,
     upsert_jobs,
-    get_active_subscribers,
     get_sent_job_ids,
     log_sent_jobs,
     issue_unsubscribe_token,
     purge_inactive_subscribers,
+    expire_subscriptions,
+    get_active_subscribers_with_profiles,
+    get_job_ids_by_urls,
 )
 from stellenscout.emailer import send_daily_digest
 
@@ -56,123 +52,202 @@ logging.basicConfig(
 log = logging.getLogger("daily_task")
 
 
+def _listing_url(job: JobListing) -> str:
+    """Get the best URL for a JobListing (prefer first apply option, fall back to link)."""
+    if job.apply_options:
+        url = getattr(job.apply_options[0], "url", None)
+        if url:
+            return url
+    return job.link or ""
+
+
+def _job_url(ej: EvaluatedJob) -> str:
+    """Get the best URL for an EvaluatedJob (prefer first apply option, fall back to link)."""
+    if ej.job.apply_options:
+        url = getattr(ej.job.apply_options[0], "url", None)
+        if url:
+            return url
+    return ej.job.link or ""
+
+
 def main() -> int:
-    cv_path = Path(os.environ.get("CV_PATH", "cv.pdf"))
-    location = os.environ.get("TARGET_LOCATION", "")
-    min_score = int(os.environ.get("MIN_SCORE", "70"))
-
-    # ── 1. Parse CV & build profile ──────────────────────────────────────
-    log.info("Parsing CV: %s", cv_path)
-    cv_text = extract_text(cv_path)
-
-    gemini = create_client()
-    profile = profile_candidate(gemini, cv_text)
-    log.info("Profile: %s (%s)", profile.roles[0], profile.experience_level)
-
-    # ── 2. Generate queries & search ─────────────────────────────────────
-    queries = generate_search_queries(gemini, profile, location)
-    log.info("Generated %d search queries", len(queries))
-
-    jobs = search_all_queries(queries, jobs_per_query=10, location=location)
-    log.info("Found %d unique jobs from SerpApi", len(jobs))
-
-    if not jobs:
-        log.warning("No jobs found — exiting.")
-        return 0
-
-    # ── 3. Evaluate jobs ─────────────────────────────────────────────────
-    evaluated = evaluate_all_jobs(gemini, profile, jobs)
-    log.info("Evaluated %d jobs", len(evaluated))
-
-    # ── 4. Filter against DB & save new ones ─────────────────────────────
     db = get_db()
-    deleted_count = purge_inactive_subscribers(db, older_than_days=30)
-    if deleted_count:
-        log.info("Purged %d inactive subscribers older than 30 days", deleted_count)
 
-    # Build a URL for each evaluated job (prefer first apply option, fall back to link)
-    def _job_url(ej: EvaluatedJob) -> str:
-        if ej.job.apply_options:
-            return ej.job.apply_options[0].url
-        return ej.job.link or ""
+    # ── 1. Expire old subscriptions ──────────────────────────────────────
+    expired_count = expire_subscriptions(db)
+    if expired_count:
+        log.info("Auto-expired %d subscriptions past 30-day window", expired_count)
 
-    url_to_ej: dict[str, EvaluatedJob] = {}
-    for ej in evaluated:
-        url = _job_url(ej)
-        if url and ej.evaluation.score >= min_score:
-            url_to_ej[url] = ej
+    # ── 2. Purge inactive subscribers (data already deleted on deactivation) ─
+    purged_count = purge_inactive_subscribers(db, older_than_days=7)
+    if purged_count:
+        log.info("Purged %d inactive subscriber rows", purged_count)
 
-    existing_urls = get_existing_urls(db, list(url_to_ej.keys()))
-    new_ejs = {u: ej for u, ej in url_to_ej.items() if u not in existing_urls}
+    # ── 3. Load active subscribers with profiles ─────────────────────────
+    subscribers = get_active_subscribers_with_profiles(db)
+    if not subscribers:
+        log.info("No active subscribers with profiles — nothing to do.")
+        return 0
+    log.info("Found %d active subscribers with profiles", len(subscribers))
 
-    if not new_ejs:
-        log.info("No new jobs above score %d — nothing to email.", min_score)
+    # ── 4. Aggregate & deduplicate search queries ────────────────────────
+    # Group queries by location so we search each (query, location) only once
+    location_queries: dict[str, set[str]] = defaultdict(set)
+    for sub in subscribers:
+        loc = sub.get("target_location") or ""
+        queries = sub.get("search_queries") or []
+        for q in queries:
+            location_queries[loc].add(q)
+
+    total_unique = sum(len(qs) for qs in location_queries.values())
+    log.info(
+        "Aggregated %d unique queries across %d location(s)",
+        total_unique,
+        len(location_queries),
+    )
+
+    # ── 5. Search once per unique (query-set, location) ──────────────────
+    # Collect all jobs keyed by title|company to avoid duplication
+    all_jobs: dict[str, JobListing] = {}
+
+    for loc, queries in location_queries.items():
+        query_list = sorted(queries)  # deterministic order
+        log.info("Searching %d queries for location '%s'", len(query_list), loc or "(none)")
+        found = search_all_queries(
+            query_list,
+            jobs_per_query=10,
+            location=loc,
+        )
+        for job in found:
+            key = f"{job.title}|{job.company_name}|{job.location}"
+            if key not in all_jobs:
+                all_jobs[key] = job
+
+    log.info("Found %d unique jobs total from SerpApi", len(all_jobs))
+    if not all_jobs:
+        log.info("No jobs found — exiting.")
         return 0
 
-    log.info("Saving %d new jobs to Supabase", len(new_ejs))
-    saved_rows = upsert_jobs(
-        db,
-        [
-            {
-                "title": ej.job.title,
-                "company": ej.job.company_name,
+    # ── 6. Upsert all jobs into DB (with descriptions) ───────────────────
+    jobs_list = list(all_jobs.values())
+    job_dicts = []
+    for job in jobs_list:
+        url = _listing_url(job)
+        if url:
+            job_dicts.append({
+                "title": job.title,
+                "company": job.company_name,
                 "url": url,
-                "location": ej.job.location,
-            }
-            for url, ej in new_ejs.items()
-        ],
-    )
+                "location": job.location,
+                "description": job.description,
+            })
 
-    # Map URL → DB id (UUID) for sent-log tracking
-    url_to_db_id: dict[str, str] = {r["url"]: r["id"] for r in saved_rows}
+    if job_dicts:
+        upsert_jobs(db, job_dicts)
+        log.info("Upserted %d jobs into DB", len(job_dicts))
 
-    # Also fetch IDs of jobs that already existed (they may be new to some subscribers)
-    all_urls = list(url_to_ej.keys())
-    all_rows = (
-        db.table("jobs").select("id, url").in_("url", all_urls).execute().data
-    )
-    url_to_db_id.update({r["url"]: r["id"] for r in all_rows})
+    # Build URL → JobListing lookup
+    url_to_job: dict[str, JobListing] = {}
+    for job in jobs_list:
+        url = _listing_url(job)
+        if url:
+            url_to_job[url] = job
 
-    # ── 5. Email each active subscriber with unseen jobs ──────────────────
+    # Get DB IDs for all job URLs
+    all_urls = list(url_to_job.keys())
+    url_to_db_id = get_job_ids_by_urls(db, all_urls)
+
+    # ── 7. Per-subscriber: evaluate, filter, email ───────────────────────
+    gemini = create_client()
     app_url = os.environ.get("APP_URL", "").rstrip("/")
-    subscribers = get_active_subscribers(db)
-    log.info("Processing %d active subscribers", len(subscribers))
 
     for sub in subscribers:
-        sent_ids = get_sent_job_ids(db, sub["id"])
-        unseen = [
-            {
-                "title": ej.job.title,
-                "company": ej.job.company_name,
-                "url": url,
-                "score": ej.evaluation.score,
-            }
-            for url, ej in url_to_ej.items()
+        sub_email = sub["email"]
+        sub_id = sub["id"]
+        sub_min_score = sub.get("min_score") or 70
+
+        # Reconstruct profile from stored JSON
+        profile_data = sub.get("profile_json")
+        if not profile_data:
+            log.warning("  %s — no profile_json, skipping", sub_email)
+            continue
+        try:
+            profile = CandidateProfile(**profile_data)
+        except Exception:
+            log.exception("  %s — invalid profile_json, skipping", sub_email)
+            continue
+
+        # Find unseen jobs for this subscriber
+        sent_ids = get_sent_job_ids(db, sub_id)
+        unseen_urls = [
+            url for url in all_urls
             if url_to_db_id.get(url) and url_to_db_id[url] not in sent_ids
         ]
 
-        if not unseen:
-            log.info("  %s — no unseen jobs, skipping", sub["email"])
+        if not unseen_urls:
+            log.info("  %s — no unseen jobs, skipping", sub_email)
             continue
+
+        # Build JobListing objects for unseen jobs
+        unseen_jobs = [url_to_job[url] for url in unseen_urls if url in url_to_job]
+        log.info("  %s — evaluating %d unseen jobs", sub_email, len(unseen_jobs))
+
+        # Evaluate unseen jobs against this subscriber's profile
+        evaluated = evaluate_all_jobs(gemini, profile, unseen_jobs)
+
+        # Filter by subscriber's min score
+        good_matches = [
+            ej for ej in evaluated
+            if ej.evaluation.score >= sub_min_score
+        ]
+
+        if not good_matches:
+            log.info("  %s — no jobs above score %d", sub_email, sub_min_score)
+            # Still log all evaluated jobs as "sent" to avoid re-evaluating
+            all_eval_ids = [
+                url_to_db_id[_job_url(ej)]
+                for ej in evaluated
+                if _job_url(ej) in url_to_db_id
+            ]
+            if all_eval_ids:
+                log_sent_jobs(db, sub_id, all_eval_ids)
+            continue
+
+        # Send email
+        email_jobs = [
+            {
+                "title": ej.job.title,
+                "company": ej.job.company_name,
+                "url": _job_url(ej),
+                "score": ej.evaluation.score,
+            }
+            for ej in good_matches
+        ]
 
         unsubscribe_url = ""
         if app_url:
             unsub_token = secrets.token_urlsafe(32)
             unsub_expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
             token_written = issue_unsubscribe_token(
-                db,
-                sub["id"],
-                token=unsub_token,
-                expires_at=unsub_expires,
+                db, sub_id, token=unsub_token, expires_at=unsub_expires,
             )
             if token_written:
                 unsubscribe_url = f"{app_url}/unsubscribe?token={unsub_token}"
 
-        log.info("  %s — sending %d jobs", sub["email"], len(unseen))
-        send_daily_digest(sub["email"], unseen, unsubscribe_url=unsubscribe_url)
+        log.info("  %s — sending %d matches (score >= %d)", sub_email, len(email_jobs), sub_min_score)
+        try:
+            send_daily_digest(sub_email, email_jobs, unsubscribe_url=unsubscribe_url)
+        except Exception:
+            log.exception("  %s — failed to send daily digest, continuing", sub_email)
 
-        new_sent_ids = [url_to_db_id[j["url"]] for j in unseen]
-        log_sent_jobs(db, sub["id"], new_sent_ids)
+        # Log ALL evaluated jobs (not just good matches) to avoid re-evaluation
+        all_eval_ids = [
+            url_to_db_id[_job_url(ej)]
+            for ej in evaluated
+            if _job_url(ej) in url_to_db_id
+        ]
+        if all_eval_ids:
+            log_sent_jobs(db, sub_id, all_eval_ids)
 
     log.info("Daily digest complete.")
     return 0

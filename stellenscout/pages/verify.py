@@ -11,7 +11,7 @@ for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
         except (KeyError, FileNotFoundError):
             pass
 
-from stellenscout.db import get_admin_client, confirm_subscriber  # noqa: E402
+from stellenscout.db import get_admin_client, confirm_subscriber, set_subscriber_expiry, SUBSCRIPTION_DAYS  # noqa: E402
 
 st.set_page_config(page_title="StellenScout – Confirm Subscription", page_icon="✅")
 
@@ -50,7 +50,23 @@ except Exception as e:
     st.stop()
 
 if subscriber:
-    st.success("Subscription confirmed! You will now receive the daily StellenScout digest.")
+    # Set auto-expiry: SUBSCRIPTION_DAYS days from confirmation
+    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    _expires = (_dt.now(_tz.utc) + _td(days=SUBSCRIPTION_DAYS)).isoformat()
+    try:
+        expiry_set = set_subscriber_expiry(db, subscriber["id"], _expires)
+    except Exception as e:
+        st.error(f"Failed to set subscription expiry: {e}")
+        st.stop()
+
+    if not expiry_set:
+        st.error("Failed to set subscription expiry. Please try confirming again later.")
+        st.stop()
+
+    st.success(
+        f"Subscription confirmed! You will receive the daily StellenScout digest "
+        f"for {SUBSCRIPTION_DAYS} days. You can unsubscribe at any time via the link in each email."
+    )
     st.balloons()
 else:
     st.error(

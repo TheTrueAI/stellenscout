@@ -29,6 +29,10 @@ except Exception as e:
     st.stop()
 
 if success:
-    st.success("You have been successfully unsubscribed. You will no longer receive emails from StellenScout.")
+    st.success(
+        "You have been successfully unsubscribed. "
+        "Your profile data has been deleted. "
+        "You will no longer receive emails from StellenScout."
+    )
 else:
     st.info("This subscription has already been cancelled or does not exist.")
