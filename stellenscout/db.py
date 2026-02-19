@@ -343,20 +343,34 @@ def expire_subscriptions(client: Client) -> int:
     return len(ids)
 
 
-def delete_subscriber_data(client: Client, subscriber_id: str) -> None:
+def delete_subscriber_data(client: Client, subscriber_id: str) -> bool:
     """Wipe PII (profile, queries) from a subscriber row.
 
     job_sent_logs are cascade-deleted when the subscriber row is
     eventually purged.  Here we just clear the JSONB columns.
+
+    Returns:
+        True if at least one row was updated, False otherwise.
+
+    Raises:
+        RuntimeError: If the Supabase client reports an error.
     """
-    client.table("subscribers").update(
-        {
-            "profile_json": None,
-            "search_queries": None,
-            "target_location": None,
-            "min_score": None,
-        }
-    ).eq("id", subscriber_id).execute()
+    result = (
+        client.table("subscribers")
+        .update(
+            {
+                "profile_json": None,
+                "search_queries": None,
+                "target_location": None,
+                "min_score": None,
+            }
+        )
+        .eq("id", subscriber_id)
+        .execute()
+    )
+    if getattr(result, "error", None):
+        raise RuntimeError(f"Failed to delete subscriber data for id={subscriber_id}: {result.error}")
+    return bool(getattr(result, "data", None))
 
 
 def get_active_subscribers_with_profiles(client: Client) -> list[dict]:
