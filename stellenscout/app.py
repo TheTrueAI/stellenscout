@@ -187,6 +187,7 @@ _DEFAULTS = {
     "run_requested": False,
     "location": "",
     "cv_processing_consent": False,
+    "_cv_consent_given": False,
 }
 for k, v in _DEFAULTS.items():
     if k not in st.session_state:
@@ -462,7 +463,7 @@ with st.sidebar:
         type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
         help="Upload a different CV",
         key="sidebar_cv_upload",
-        disabled=not st.session_state.cv_processing_consent,
+        disabled=not st.session_state._cv_consent_given,
     )
 
     st.divider()
@@ -506,14 +507,15 @@ if not has_cv:
         st.checkbox(
             "I consent to processing my CV data for AI matching as described in the [Privacy Policy](/privacy).",
             key="cv_processing_consent",
-            value=st.session_state.cv_processing_consent,
+            value=st.session_state._cv_consent_given,
+            on_change=lambda: setattr(st.session_state, '_cv_consent_given', st.session_state.cv_processing_consent),
         )
         hero_uploaded_file = st.file_uploader(
             "Upload your CV to get started",
             type=[ext.lstrip(".") for ext in SUPPORTED_EXTENSIONS],
             help="Supported formats: PDF, DOCX, Markdown, plain text. Your file stays private.",
             key="hero_cv_upload",
-            disabled=not st.session_state.cv_processing_consent,
+            disabled=not st.session_state._cv_consent_given,
         )
         st.caption("Your CV is processed securely via AI. See our [Privacy Policy](/privacy) for details.")
 
@@ -582,7 +584,7 @@ if sidebar_uploaded_file is not None:
 # Eager CV processing — runs on every rerun where a file is uploaded
 # ---------------------------------------------------------------------------
 if uploaded_file is not None:
-    if not st.session_state.cv_processing_consent:
+    if not st.session_state._cv_consent_given:
         st.warning("Please provide CV processing consent before uploading your CV.")
         st.stop()
 
@@ -608,7 +610,7 @@ if uploaded_file is not None:
 
 # Capture button intent — profile may not be ready yet
 if has_cv and not has_results and run_button:
-    if not st.session_state.cv_processing_consent:
+    if not st.session_state._cv_consent_given:
         st.warning("Please provide CV processing consent before starting the job search.")
     else:
         st.session_state.run_requested = True
@@ -620,6 +622,7 @@ if st.session_state.cv_text and st.session_state.profile is None:
     cached_profile = cache.load_profile(st.session_state.cv_text)
     if cached_profile is not None:
         st.session_state.profile = cached_profile
+        st.session_state._cv_consent_given = True  # consent was given in the session that created the cache
         st.rerun()
     elif _keys_ok():
         label = (
