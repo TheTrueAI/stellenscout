@@ -2,12 +2,13 @@
 
 import json
 import os
+import random
 import re
 import time
-import random
+
 from google import genai
 from google.genai import types
-from google.genai.errors import ServerError, ClientError
+from google.genai.errors import ClientError, ServerError
 
 # Retry configuration
 MAX_RETRIES = 5
@@ -34,7 +35,7 @@ def call_gemini(
 
     Retries on 429 (rate limit) and 503 (overloaded) with exponential backoff.
     """
-    last_exception = None
+    last_exception: Exception | None = None
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -46,22 +47,22 @@ def call_gemini(
                     max_output_tokens=max_tokens,
                 ),
             )
-            return response.text
+            return response.text or ""
         except ServerError as e:
             last_exception = e
             if attempt < MAX_RETRIES - 1:
-                delay = BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
+                delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
                 time.sleep(delay)
         except ClientError as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 last_exception = e
                 if attempt < MAX_RETRIES - 1:
-                    delay = BASE_DELAY * (2 ** attempt) + random.uniform(0, 1)
+                    delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
                     time.sleep(delay)
             else:
                 raise
 
-    raise last_exception
+    raise last_exception  # type: ignore[misc]
 
 
 def parse_json(text: str) -> dict | list:
@@ -77,7 +78,7 @@ def parse_json(text: str) -> dict | list:
         raise ValueError("Empty response from API")
 
     # Strip markdown code fences (```json ... ``` or ``` ... ```)
-    stripped = re.sub(r'```(?:json)?\s*\n?', '', text).strip()
+    stripped = re.sub(r"```(?:json)?\s*\n?", "", text).strip()
 
     # Try parsing the stripped text directly
     try:
@@ -86,7 +87,7 @@ def parse_json(text: str) -> dict | list:
         pass
 
     # Try extracting the outermost JSON object { ... }
-    match = re.search(r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', text, re.DOTALL)
+    match = re.search(r"\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}", text, re.DOTALL)
     if match:
         try:
             return json.loads(match.group())
@@ -94,7 +95,7 @@ def parse_json(text: str) -> dict | list:
             pass
 
     # Try extracting a JSON array [ ... ]
-    match = re.search(r'\[[\s\S]*\]', text)
+    match = re.search(r"\[[\s\S]*\]", text)
     if match:
         try:
             return json.loads(match.group())

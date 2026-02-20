@@ -106,9 +106,7 @@ def _build_html(jobs: list[dict], unsubscribe_url: str = "") -> str:
 </html>"""
 
 
-def send_daily_digest(
-    user_email: str, jobs: list[dict], unsubscribe_url: str = ""
-) -> dict:
+def send_daily_digest(user_email: str, jobs: list[dict], unsubscribe_url: str = "") -> dict:
     """Send a daily digest email with new job matches.
 
     Args:
@@ -146,7 +144,7 @@ def send_daily_digest(
     return resend.Emails.send(params)
 
 
-def send_verification_email(email: str, verify_url: str) -> dict:
+def send_verification_email(email: str, verify_url: str) -> dict:  # type: ignore[type-arg]
     """Send a Double Opt-In verification email.
 
     Args:

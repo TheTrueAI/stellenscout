@@ -1,8 +1,9 @@
 """CV Parser module - Extracts text from CV files (PDF, DOCX, MD, TXT)."""
 
-import pdfplumber
-import docx
 from pathlib import Path
+
+import docx
+import pdfplumber
 
 SUPPORTED_EXTENSIONS = {".pdf", ".docx", ".md", ".txt"}
 
@@ -29,10 +30,7 @@ def extract_text(cv_path: str | Path) -> str:
     suffix = cv_path.suffix.lower()
 
     if suffix not in SUPPORTED_EXTENSIONS:
-        raise ValueError(
-            f"Unsupported file format: {suffix}. "
-            f"Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}"
-        )
+        raise ValueError(f"Unsupported file format: {suffix}. Supported: {', '.join(sorted(SUPPORTED_EXTENSIONS))}")
 
     if suffix == ".pdf":
         text = _extract_from_pdf(cv_path)
@@ -79,5 +77,3 @@ def _clean_text(text: str) -> str:
         cleaned_text = cleaned_text.replace("\n\n\n", "\n\n")
 
     return cleaned_text.strip()
-
-

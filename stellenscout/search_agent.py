@@ -2,11 +2,13 @@
 
 import os
 import re
+from collections.abc import Callable
+
 from google import genai
 from serpapi import GoogleSearch
 
-from .models import CandidateProfile, JobListing, ApplyOption
 from .llm import call_gemini, parse_json
+from .models import ApplyOption, CandidateProfile, JobListing
 
 # Questionable job portals that often have expired listings or paywalls
 _BLOCKED_PORTALS = {
@@ -37,43 +39,94 @@ _BLOCKED_PORTALS = {
 # Map country/city names to Google gl= codes so SerpApi doesn't default to "us"
 _GL_CODES: dict[str, str] = {
     # Countries
-    "germany": "de", "deutschland": "de",
+    "germany": "de",
+    "deutschland": "de",
     "france": "fr",
-    "netherlands": "nl", "holland": "nl",
+    "netherlands": "nl",
+    "holland": "nl",
     "belgium": "be",
-    "austria": "at", "österreich": "at",
-    "switzerland": "ch", "schweiz": "ch", "suisse": "ch",
-    "spain": "es", "españa": "es",
-    "italy": "it", "italia": "it",
+    "austria": "at",
+    "österreich": "at",
+    "switzerland": "ch",
+    "schweiz": "ch",
+    "suisse": "ch",
+    "spain": "es",
+    "españa": "es",
+    "italy": "it",
+    "italia": "it",
     "portugal": "pt",
-    "poland": "pl", "polska": "pl",
-    "sweden": "se", "sverige": "se",
-    "norway": "no", "norge": "no",
-    "denmark": "dk", "danmark": "dk",
-    "finland": "fi", "suomi": "fi",
+    "poland": "pl",
+    "polska": "pl",
+    "sweden": "se",
+    "sverige": "se",
+    "norway": "no",
+    "norge": "no",
+    "denmark": "dk",
+    "danmark": "dk",
+    "finland": "fi",
+    "suomi": "fi",
     "ireland": "ie",
-    "czech republic": "cz", "czechia": "cz",
+    "czech republic": "cz",
+    "czechia": "cz",
     "romania": "ro",
     "hungary": "hu",
     "greece": "gr",
     "luxembourg": "lu",
-    "uk": "uk", "united kingdom": "uk", "england": "uk",
+    "uk": "uk",
+    "united kingdom": "uk",
+    "england": "uk",
     # Major cities → country
-    "berlin": "de", "munich": "de", "münchen": "de", "hamburg": "de",
-    "frankfurt": "de", "stuttgart": "de", "düsseldorf": "de", "köln": "de",
-    "cologne": "de", "hannover": "de", "nürnberg": "de", "nuremberg": "de",
-    "leipzig": "de", "dresden": "de", "dortmund": "de", "essen": "de",
+    "berlin": "de",
+    "munich": "de",
+    "münchen": "de",
+    "hamburg": "de",
+    "frankfurt": "de",
+    "stuttgart": "de",
+    "düsseldorf": "de",
+    "köln": "de",
+    "cologne": "de",
+    "hannover": "de",
+    "nürnberg": "de",
+    "nuremberg": "de",
+    "leipzig": "de",
+    "dresden": "de",
+    "dortmund": "de",
+    "essen": "de",
     "bremen": "de",
-    "paris": "fr", "lyon": "fr", "marseille": "fr", "toulouse": "fr",
-    "amsterdam": "nl", "rotterdam": "nl", "eindhoven": "nl", "utrecht": "nl",
-    "brussels": "be", "bruxelles": "be", "antwerp": "be",
-    "vienna": "at", "wien": "at", "graz": "at",
-    "zurich": "ch", "zürich": "ch", "geneva": "ch", "genève": "ch", "basel": "ch", "bern": "ch",
-    "madrid": "es", "barcelona": "es",
-    "rome": "it", "milan": "it", "milano": "it",
-    "lisbon": "pt", "porto": "pt",
-    "warsaw": "pl", "kraków": "pl", "krakow": "pl", "wrocław": "pl",
-    "stockholm": "se", "gothenburg": "se", "malmö": "se",
+    "paris": "fr",
+    "lyon": "fr",
+    "marseille": "fr",
+    "toulouse": "fr",
+    "amsterdam": "nl",
+    "rotterdam": "nl",
+    "eindhoven": "nl",
+    "utrecht": "nl",
+    "brussels": "be",
+    "bruxelles": "be",
+    "antwerp": "be",
+    "vienna": "at",
+    "wien": "at",
+    "graz": "at",
+    "zurich": "ch",
+    "zürich": "ch",
+    "geneva": "ch",
+    "genève": "ch",
+    "basel": "ch",
+    "bern": "ch",
+    "madrid": "es",
+    "barcelona": "es",
+    "rome": "it",
+    "milan": "it",
+    "milano": "it",
+    "lisbon": "pt",
+    "porto": "pt",
+    "warsaw": "pl",
+    "kraków": "pl",
+    "krakow": "pl",
+    "wrocław": "pl",
+    "stockholm": "se",
+    "gothenburg": "se",
+    "malmö": "se",
     "oslo": "no",
     "copenhagen": "dk",
     "helsinki": "fi",
@@ -82,7 +135,9 @@ _GL_CODES: dict[str, str] = {
     "bucharest": "ro",
     "budapest": "hu",
     "athens": "gr",
-    "london": "uk", "manchester": "uk", "edinburgh": "uk",
+    "london": "uk",
+    "manchester": "uk",
+    "edinburgh": "uk",
 }
 
 
@@ -103,16 +158,22 @@ def _infer_gl(location: str) -> str:
 # Google Jobs with gl=de returns 0 results for "Munich" but 30 for "München".
 _CITY_LOCALISE: dict[str, str] = {
     # German
-    "munich": "München", "cologne": "Köln", "nuremberg": "Nürnberg",
-    "hanover": "Hannover", "dusseldorf": "Düsseldorf",
+    "munich": "München",
+    "cologne": "Köln",
+    "nuremberg": "Nürnberg",
+    "hanover": "Hannover",
+    "dusseldorf": "Düsseldorf",
     # Austrian
     "vienna": "Wien",
     # Swiss
-    "zurich": "Zürich", "geneva": "Genève",
+    "zurich": "Zürich",
+    "geneva": "Genève",
     # Czech
     "prague": "Praha",
     # Polish
-    "warsaw": "Warszawa", "krakow": "Kraków", "wroclaw": "Wrocław",
+    "warsaw": "Warszawa",
+    "krakow": "Kraków",
+    "wroclaw": "Wrocław",
     # Danish
     "copenhagen": "København",
     # Greek
@@ -120,7 +181,8 @@ _CITY_LOCALISE: dict[str, str] = {
     # Romanian
     "bucharest": "București",
     # Italian
-    "milan": "Milano", "rome": "Roma",
+    "milan": "Milano",
+    "rome": "Roma",
     # Portuguese
     "lisbon": "Lisboa",
     # Belgian
@@ -139,9 +201,8 @@ _LOCALISE_PATTERN = re.compile(
 
 def _localise_query(query: str) -> str:
     """Replace English city names with their local equivalents in a query."""
-    return _LOCALISE_PATTERN.sub(
-        lambda m: _CITY_LOCALISE[m.group(0).lower()], query
-    )
+    return _LOCALISE_PATTERN.sub(lambda m: _CITY_LOCALISE[m.group(0).lower()], query)
+
 
 # System prompt for the Profiler agent
 PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep knowledge of European job markets.
@@ -198,6 +259,8 @@ def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
 
     content = call_gemini(client, prompt, temperature=0.3, max_tokens=8192)
     data = parse_json(content)
+    if not isinstance(data, dict):
+        raise ValueError("Expected a JSON object for profile")
     return CandidateProfile(**data)
 
 
@@ -219,18 +282,14 @@ def generate_search_queries(
         List of search query strings.
     """
     profile_text = f"""Candidate Profile:
-- Skills: {', '.join(profile.skills)}
+- Skills: {", ".join(profile.skills)}
 - Experience Level: {profile.experience_level}
-- Target Roles: {', '.join(profile.roles)}
-- Languages: {', '.join(profile.languages)}
-- Domain Expertise: {', '.join(profile.domain_expertise)}
+- Target Roles: {", ".join(profile.roles)}
+- Languages: {", ".join(profile.languages)}
+- Domain Expertise: {", ".join(profile.domain_expertise)}
 - Target Location: {location}"""
 
-    prompt = (
-        f"{HEADHUNTER_SYSTEM_PROMPT}\n\n"
-        f"Generate exactly {num_queries} queries.\n\n"
-        f"{profile_text}"
-    )
+    prompt = f"{HEADHUNTER_SYSTEM_PROMPT}\n\nGenerate exactly {num_queries} queries.\n\n{profile_text}"
 
     content = call_gemini(client, prompt, temperature=0.5, max_tokens=8192)
     queries = parse_json(content)
@@ -260,9 +319,7 @@ def _parse_job_results(results: dict) -> list[JobListing]:
                 url = option["link"].lower()
                 # Skip if the URL contains any blocked portal domain
                 if not any(blocked in url for blocked in _BLOCKED_PORTALS):
-                    apply_options.append(
-                        ApplyOption(source=option["title"], url=option["link"])
-                    )
+                    apply_options.append(ApplyOption(source=option["title"], url=option["link"]))
 
         # Skip jobs that only have questionable portal links or no links at all
         if not apply_options:
@@ -335,7 +392,7 @@ def search_all_queries(
     jobs_per_query: int = 10,
     location: str = "",
     min_unique_jobs: int = 50,
-    on_progress: "None | callable" = None,
+    on_progress: "None | Callable" = None,
 ) -> list[JobListing]:
     """
     Search for jobs across multiple queries and deduplicate results.

@@ -3,10 +3,10 @@
 import hashlib
 import logging
 import os
-import time
-import tempfile
-import shutil
 import secrets
+import shutil
+import tempfile
+import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -19,7 +19,16 @@ jobs_per_query = 10  # default value
 # Inject API keys from Streamlit secrets into env vars
 # (must happen before any stellenscout imports that read env vars)
 # ---------------------------------------------------------------------------
-for key in ("GOOGLE_API_KEY", "SERPAPI_KEY", "SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY", "RESEND_API_KEY", "RESEND_FROM", "APP_URL"):
+for key in (
+    "GOOGLE_API_KEY",
+    "SERPAPI_KEY",
+    "SUPABASE_URL",
+    "SUPABASE_KEY",
+    "SUPABASE_SERVICE_KEY",
+    "RESEND_API_KEY",
+    "RESEND_FROM",
+    "APP_URL",
+):
     if key not in os.environ:
         try:
             os.environ[key] = st.secrets[key]
@@ -28,19 +37,20 @@ for key in ("GOOGLE_API_KEY", "SERPAPI_KEY", "SUPABASE_URL", "SUPABASE_KEY", "SU
 
 import sys as _sys  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
+
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 
-from stellenscout.cv_parser import extract_text, SUPPORTED_EXTENSIONS  # noqa: E402
+from stellenscout.cache import ResultCache  # noqa: E402
+from stellenscout.cv_parser import SUPPORTED_EXTENSIONS, extract_text  # noqa: E402
+from stellenscout.db import SUBSCRIPTION_DAYS  # noqa: E402
+from stellenscout.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from stellenscout.llm import create_client  # noqa: E402
+from stellenscout.models import CandidateProfile, EvaluatedJob  # noqa: E402
 from stellenscout.search_agent import (  # noqa: E402
-    profile_candidate,
     generate_search_queries,
+    profile_candidate,
     search_all_queries,
 )
-from stellenscout.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
-from stellenscout.models import CandidateProfile, EvaluatedJob  # noqa: E402
-from stellenscout.cache import ResultCache  # noqa: E402
-from stellenscout.db import SUBSCRIPTION_DAYS  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -57,7 +67,8 @@ st.set_page_config(
 # Custom CSS
 # ---------------------------------------------------------------------------
 def _inject_custom_css() -> None:
-    st.markdown("""
+    st.markdown(
+        """
     <style>
     /* Hero section */
     .hero-section {
@@ -165,7 +176,9 @@ def _inject_custom_css() -> None:
     /* General spacing */
     .block-container { padding-top: 2rem; }
     </style>
-    """, unsafe_allow_html=True)
+    """,
+        unsafe_allow_html=True,
+    )
 
 
 _inject_custom_css()
@@ -174,6 +187,8 @@ _inject_custom_css()
 # Session state defaults
 # ---------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
+
+
 @st.cache_resource
 def _get_summary_executor() -> ThreadPoolExecutor:
     return ThreadPoolExecutor(max_workers=2)
@@ -218,9 +233,7 @@ def _get_cache() -> ResultCache:
     return ResultCache(cache_dir=CACHE_ROOT / cv_hash)
 
 
-def _cleanup_old_sessions(
-    max_age_hours: int = 24, max_sessions: int = 50
-) -> None:
+def _cleanup_old_sessions(max_age_hours: int = 24, max_sessions: int = 50) -> None:
     """Delete session cache dirs older than *max_age_hours* and cap total count."""
     if not CACHE_ROOT.exists():
         return
@@ -249,7 +262,8 @@ def _cleanup_old_sessions(
 if "cleanup_done" not in st.session_state:
     _cleanup_old_sessions()
     try:
-        from stellenscout.db import get_admin_client as _get_admin_db, purge_inactive_subscribers
+        from stellenscout.db import get_admin_client as _get_admin_db
+        from stellenscout.db import purge_inactive_subscribers
 
         _db = _get_admin_db()
         purge_inactive_subscribers(_db, older_than_days=30)
@@ -361,10 +375,7 @@ def _render_job_card(ej: EvaluatedJob) -> None:
 
         with center:
             st.markdown(f"**{ej.job.title}** @ {ej.job.company_name}")
-            st.caption(
-                f"📍 {ej.job.location}"
-                + (f"  •  🕐 {ej.job.posted_at}" if ej.job.posted_at else "")
-            )
+            st.caption(f"📍 {ej.job.location}" + (f"  •  🕐 {ej.job.posted_at}" if ej.job.posted_at else ""))
             st.markdown(ej.evaluation.reasoning)
             if missing:
                 st.markdown(f"**Missing:** {missing}")
@@ -411,9 +422,7 @@ def _render_career_summary(evaluated_jobs: list[EvaluatedJob]) -> bool:
                 st.session_state.summary = future.result()
             except Exception:
                 logger.exception("Summary generation error")
-                st.session_state.summary_error = (
-                    "Could not generate the career summary right now."
-                )
+                st.session_state.summary_error = "Could not generate the career summary right now."
             finally:
                 st.session_state.summary_future = None
         else:
@@ -446,11 +455,11 @@ def _render_step_indicator(step: int) -> None:
     badges = []
     for i, label in enumerate(labels, 1):
         if i < step:
-            badges.append(f'<span class="step-badge step-done">{icons_done[i-1]} {label}</span>')
+            badges.append(f'<span class="step-badge step-done">{icons_done[i - 1]} {label}</span>')
         elif i == step:
-            badges.append(f'<span class="step-badge step-active">{icons_active[i-1]} {label}</span>')
+            badges.append(f'<span class="step-badge step-active">{icons_active[i - 1]} {label}</span>')
         else:
-            badges.append(f'<span class="step-badge step-pending">{icons_pending[i-1]} {label}</span>')
+            badges.append(f'<span class="step-badge step-pending">{icons_pending[i - 1]} {label}</span>')
 
     st.markdown(
         f'<div class="step-indicator">{"".join(badges)}</div>',
@@ -574,7 +583,9 @@ if not has_cv:
 
     # Recent DB jobs below
     try:
-        from stellenscout.db import get_admin_client as _get_db_browse, get_all_jobs
+        from stellenscout.db import get_admin_client as _get_db_browse
+        from stellenscout.db import get_all_jobs
+
         _db_browse = _get_db_browse()
         _saved_jobs = get_all_jobs(_db_browse)
         if _saved_jobs:
@@ -733,9 +744,12 @@ def _run_pipeline() -> None:
             search_progress.empty()
             status.update(label=f"✅ Found {len(jobs)} jobs (cached)", state="complete")
         else:
+
             def _search_progress(qi: int, total: int, unique: int) -> None:
                 pct = qi / total
-                search_progress.progress(pct, text=f"🌍 Searching query {qi}/{total} — {unique} unique jobs found so far...")
+                search_progress.progress(
+                    pct, text=f"🌍 Searching query {qi}/{total} — {unique} unique jobs found so far..."
+                )
 
             jobs = search_all_queries(
                 queries,
@@ -767,10 +781,7 @@ def _run_pipeline() -> None:
         results_slot = st.empty()
 
         with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {
-                executor.submit(evaluate_job, client, profile, job): job
-                for job in new_jobs
-            }
+            futures = {executor.submit(evaluate_job, client, profile, job): job for job in new_jobs}
             for i, future in enumerate(as_completed(futures), 1):
                 job = futures[future]
                 evaluation = future.result()
@@ -878,7 +889,8 @@ if st.session_state.evaluated_jobs is not None:
 
     # -- Apply filters -----------------------------------------------------
     filtered = [
-        ej for ej in evaluated_jobs
+        ej
+        for ej in evaluated_jobs
         if ej.evaluation.score >= min_score
         and (not selected_companies or ej.job.company_name in selected_companies)
         and (not selected_locations or ej.job.location in selected_locations)
@@ -903,16 +915,14 @@ if st.session_state.evaluated_jobs is not None:
 
     # -- Cards -------------------------------------------------------------
     if not filtered:
-        st.info(
-            f"No jobs match the current filters (score ≥ {min_score}). "
-            "Try lowering the minimum score."
-        )
+        st.info(f"No jobs match the current filters (score ≥ {min_score}). Try lowering the minimum score.")
     else:
         for ej in filtered:
             _render_job_card(ej)
 
     # -- Career summary (collapsed, after job cards) -----------------------
     if hasattr(st, "fragment"):
+
         @st.fragment(run_every="2s")
         def _summary_fragment() -> None:
             _render_career_summary(evaluated_jobs)
@@ -961,15 +971,22 @@ if st.session_state.evaluated_jobs is not None:
             st.warning("Please run a job search before subscribing so we can save your profile.")
         else:
             try:
-                from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+                from datetime import datetime as _dt
+                from datetime import timedelta as _td
+                from datetime import timezone as _tz
+
+                from stellenscout.db import (
+                    add_subscriber,
+                    get_job_ids_by_urls,
+                    get_subscriber_by_email,
+                    log_sent_jobs,
+                    save_subscription_context,
+                )
                 from stellenscout.db import (
                     get_admin_client as _get_admin_db,
-                    add_subscriber,
-                    save_subscription_context,
-                    get_subscriber_by_email,
+                )
+                from stellenscout.db import (
                     upsert_jobs as _upsert_jobs,
-                    get_job_ids_by_urls,
-                    log_sent_jobs,
                 )
                 from stellenscout.emailer import send_verification_email
 
@@ -1007,9 +1024,7 @@ if st.session_state.evaluated_jobs is not None:
                                 "save_subscription_context returned False for subscriber %s",
                                 _sub_row["id"],
                             )
-                            st.error(
-                                "Could not save your subscription context. Please try again."
-                            )
+                            st.error("Could not save your subscription context. Please try again.")
                         else:
                             # Pre-seed job_sent_logs with jobs already displayed
                             # so the first newsletter doesn't repeat them
@@ -1018,23 +1033,21 @@ if st.session_state.evaluated_jobs is not None:
                                     _seen_jobs = []
                                     for _ej in st.session_state.evaluated_jobs:
                                         _url = (
-                                            _ej.job.apply_options[0].url
-                                            if _ej.job.apply_options
-                                            else _ej.job.link
+                                            _ej.job.apply_options[0].url if _ej.job.apply_options else _ej.job.link
                                         ) or ""
                                         if _url:
-                                            _seen_jobs.append({
-                                                "title": _ej.job.title,
-                                                "company": _ej.job.company_name,
-                                                "url": _url,
-                                                "location": _ej.job.location,
-                                                "description": _ej.job.description,
-                                            })
+                                            _seen_jobs.append(
+                                                {
+                                                    "title": _ej.job.title,
+                                                    "company": _ej.job.company_name,
+                                                    "url": _url,
+                                                    "location": _ej.job.location,
+                                                    "description": _ej.job.description,
+                                                }
+                                            )
                                     if _seen_jobs:
                                         _upsert_jobs(_db, _seen_jobs)
-                                        _url_to_id = get_job_ids_by_urls(
-                                            _db, [j["url"] for j in _seen_jobs]
-                                        )
+                                        _url_to_id = get_job_ids_by_urls(_db, [j["url"] for j in _seen_jobs])
                                         _job_ids = list(_url_to_id.values())
                                         if _job_ids:
                                             log_sent_jobs(_db, _sub_row["id"], _job_ids)
@@ -1054,8 +1067,6 @@ if st.session_state.evaluated_jobs is not None:
                                 f"You'll receive daily job matches for {SUBSCRIPTION_DAYS} days after confirming."
                             )
                     else:
-                        st.error(
-                            "Could not retrieve your subscription details. Please try again."
-                        )
+                        st.error("Could not retrieve your subscription details. Please try again.")
             except Exception as _sub_err:
                 st.error(f"Could not subscribe: {_sub_err}")

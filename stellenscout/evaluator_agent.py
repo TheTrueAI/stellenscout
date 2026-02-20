@@ -3,11 +3,12 @@
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from google import genai
-from google.genai.errors import ServerError, ClientError
 
-from .models import CandidateProfile, JobListing, JobEvaluation, EvaluatedJob
+from google import genai
+from google.genai.errors import ClientError, ServerError
+
 from .llm import call_gemini, parse_json
+from .models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
 
 # System prompt for the Screener agent
 SCREENER_SYSTEM_PROMPT = """You are a strict Hiring Manager. Evaluate if the candidate is a fit for this specific job.
@@ -30,11 +31,7 @@ Return ONLY a JSON object with:
 Be critical but fair. European companies often have strict requirements."""
 
 
-def evaluate_job(
-    client: genai.Client,
-    profile: CandidateProfile,
-    job: JobListing
-) -> JobEvaluation:
+def evaluate_job(client: genai.Client, profile: CandidateProfile, job: JobListing) -> JobEvaluation:
     """
     Evaluate how well a job matches the candidate's profile.
 
@@ -51,11 +48,11 @@ def evaluate_job(
     summary_line = f"\n- **Summary:** {profile.summary}" if profile.summary else ""
 
     user_prompt = f"""## Candidate Profile
-- **Skills:** {', '.join(profile.skills)}
+- **Skills:** {", ".join(profile.skills)}
 - **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
-- **Target Roles:** {', '.join(profile.roles)}
-- **Languages:** {', '.join(profile.languages)}
-- **Domain Expertise:** {', '.join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}
+- **Target Roles:** {", ".join(profile.roles)}
+- **Languages:** {", ".join(profile.languages)}
+- **Domain Expertise:** {", ".join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}
 
 ## Job Listing
 - **Title:** {job.title}
@@ -73,21 +70,15 @@ Evaluate this job match and return JSON."""
     try:
         content = call_gemini(client, prompt, temperature=0.2, max_tokens=8192)
     except (ServerError, ClientError):
-        return JobEvaluation(
-            score=50,
-            reasoning="Could not evaluate (API error after retries)",
-            missing_skills=[]
-        )
+        return JobEvaluation(score=50, reasoning="Could not evaluate (API error after retries)", missing_skills=[])
 
     try:
         data = parse_json(content)
     except ValueError:
-        return JobEvaluation(
-            score=50,
-            reasoning="Could not evaluate (failed to parse response)",
-            missing_skills=[]
-        )
+        return JobEvaluation(score=50, reasoning="Could not evaluate (failed to parse response)", missing_skills=[])
 
+    if not isinstance(data, dict):
+        return JobEvaluation(score=50, reasoning="Could not evaluate (unexpected response format)", missing_skills=[])
     return JobEvaluation(**data)
 
 
@@ -195,17 +186,19 @@ def generate_summary(
         for ej in top_matches
     )
 
-    missing_text = "\n".join(
-        f"- {skill} (appears in {count} listings)" for skill, count in top_missing
-    ) if top_missing else "- None identified"
+    missing_text = (
+        "\n".join(f"- {skill} (appears in {count} listings)" for skill, count in top_missing)
+        if top_missing
+        else "- None identified"
+    )
 
     dist_text = ", ".join(f"{k}: {v}" for k, v in bins.items())
 
     user_prompt = f"""## Candidate Profile
-- **Skills:** {', '.join(profile.skills)}
+- **Skills:** {", ".join(profile.skills)}
 - **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
-- **Target Roles:** {', '.join(profile.roles)}
-- **Languages:** {', '.join(profile.languages)}
+- **Target Roles:** {", ".join(profile.roles)}
+- **Languages:** {", ".join(profile.languages)}
 
 ## Score Distribution ({len(evaluated_jobs)} jobs evaluated)
 {dist_text}
