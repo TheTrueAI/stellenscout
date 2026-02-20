@@ -7,7 +7,7 @@ import time
 import tempfile
 import shutil
 import secrets
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -174,12 +174,15 @@ _inject_custom_css()
 # Session state defaults
 # ---------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
+_SUMMARY_EXECUTOR = ThreadPoolExecutor(max_workers=2)
 
 _DEFAULTS = {
     "profile": None,
     "queries": None,
     "evaluated_jobs": None,
     "summary": None,
+    "summary_future": None,
+    "summary_error": None,
     "cv_text": None,
     "cv_file_hash": None,
     "cv_file_name": None,
@@ -373,6 +376,54 @@ def _render_job_card(ej: EvaluatedJob) -> None:
                     st.link_button(label, option.url, use_container_width=True)
             elif ej.job.link:
                 st.link_button("Apply ↗", ej.job.link, use_container_width=True)
+
+
+def _generate_summary_background(
+    profile: CandidateProfile,
+    evaluated_jobs: list[EvaluatedJob],
+) -> str:
+    client = create_client()
+    return generate_summary(client, profile, evaluated_jobs)
+
+
+def _render_career_summary(evaluated_jobs: list[EvaluatedJob]) -> bool:
+    """Render summary area and return True while summary generation is pending."""
+    pending = False
+
+    if st.session_state.summary is None and st.session_state.profile is not None:
+        future = st.session_state.get("summary_future")
+
+        if not isinstance(future, Future):
+            st.session_state.summary_error = None
+            st.session_state.summary_future = _SUMMARY_EXECUTOR.submit(
+                _generate_summary_background,
+                st.session_state.profile,
+                evaluated_jobs,
+            )
+            pending = True
+            st.info("📊 Generating career summary in the background while you browse offers...")
+        elif future.done():
+            try:
+                st.session_state.summary = future.result()
+            except Exception:
+                logger.exception("Summary generation error")
+                st.session_state.summary_error = (
+                    "Could not generate the career summary right now."
+                )
+            finally:
+                st.session_state.summary_future = None
+        else:
+            pending = True
+            st.info("📊 Career summary is still generating in the background.")
+
+    if st.session_state.summary_error:
+        st.warning(st.session_state.summary_error)
+
+    if st.session_state.summary is not None:
+        with st.expander("📊 Market Summary & Career Advice", expanded=True):
+            st.markdown(st.session_state.summary)
+
+    return pending
 
 
 # ---------------------------------------------------------------------------
@@ -605,7 +656,11 @@ if uploaded_file is not None:
         st.session_state.queries = None
         st.session_state.evaluated_jobs = None
         st.session_state.summary = None
-        st.session_state.pop("summary_requested", None)
+        st.session_state.summary_error = None
+        prev_future = st.session_state.get("summary_future")
+        if isinstance(prev_future, Future):
+            prev_future.cancel()
+        st.session_state.summary_future = None
         st.rerun()
 
 # Capture button intent — profile may not be ready yet
@@ -855,26 +910,18 @@ if st.session_state.evaluated_jobs is not None:
             _render_job_card(ej)
 
     # -- Career summary (collapsed, after job cards) -----------------------
-    if st.session_state.summary is not None:
-        with st.expander("📊 Market Summary & Career Advice", expanded=True):
-            st.markdown(st.session_state.summary)
+    if hasattr(st, "fragment"):
+        @st.fragment(run_every="2s")
+        def _summary_fragment() -> None:
+            _render_career_summary(evaluated_jobs)
+
+        _summary_fragment()
     else:
-        # Lazy summary generation — trigger on next rerun
-        if st.session_state.profile is not None and "summary_requested" not in st.session_state:
-            st.session_state.summary_requested = True
-            st.rerun()
-        elif st.session_state.get("summary_requested") and st.session_state.summary is None:
-            try:
-                with st.status("📊 Generating career summary...", expanded=False) as status:
-                    client = create_client()
-                    summary = generate_summary(client, st.session_state.profile, evaluated_jobs)
-                    st.session_state.summary = summary
-                    del st.session_state.summary_requested
-                    status.update(label="✅ Career summary ready", state="complete")
+        pending = _render_career_summary(evaluated_jobs)
+        if pending:
+            st.caption("Auto-refresh for background summary is unavailable in this Streamlit version.")
+            if st.button("Refresh summary", key="refresh_summary_btn"):
                 st.rerun()
-            except Exception:
-                logger.exception("Summary generation error")
-                del st.session_state.summary_requested
 
     # -- Newsletter CTA (after everything) ---------------------------------
     st.markdown(
