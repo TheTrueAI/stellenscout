@@ -229,18 +229,9 @@ All pipeline results are cached to JSON in `.stellenscout_cache/` to minimize AP
 - **Jobs**: Searched today → reuse; new day → search API and merge
 - **Evaluations**: Profile hash changes → clear all; otherwise only unevaluated jobs are sent to Gemini
 
-**CLI flag:** `--no-cache` forces a fresh run ignoring all cached data.
-
 ---
 
-## 8. Interfaces
-
-### CLI (`main.py`)
-- Entry point: `stellenscout <cv_path> [--location] [--min-score] [--jobs-per-query] [--num-queries] [--no-cache]`
-- Rich terminal UI with spinners, colored tables, and detailed match view
-- After evaluation, displays a career summary panel (Market Overview, Skill Gaps, Career Advice) above the results table
-
-### Streamlit Web UI (`app.py`)
+## 8. Streamlit Web UI (`app.py`)
 
 Three-phase UI flow:
 - **Phase A (Landing):** Hero section, CV consent checkbox, file uploader, recent DB jobs
@@ -318,8 +309,6 @@ Per-subscriber pipeline, designed to run in GitHub Actions (or any cron schedule
 8. Exit
 
 Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`.
-
-**Removed env vars:** `CV_PATH`, `TARGET_LOCATION`, `MIN_SCORE` are no longer needed — each subscriber's profile, location, and score threshold are stored in the database.
 
 ### Email Templates (`emailer.py`)
 - `send_daily_digest()` — HTML table of job matches with score badges and apply links

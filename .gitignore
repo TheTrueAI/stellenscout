@@ -26,6 +26,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+stellenscout.egg-info/
 
 # IDE
 .idea/
