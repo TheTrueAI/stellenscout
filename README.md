@@ -78,4 +78,4 @@ setup_db.py           # Database schema checker / migration helper
 
 ## License
 
-MIT
+AGPL-3.0 License
