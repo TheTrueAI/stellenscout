@@ -1,10 +1,10 @@
 """Supabase database layer for StellenScout."""
 
 import os
-from typing import Any
 from datetime import datetime, timezone
+from typing import Any
 
-from supabase import create_client, Client
+from supabase import Client, create_client
 
 # Number of days a confirmed subscription is active before auto-expiry.
 SUBSCRIPTION_DAYS = 30
@@ -35,6 +35,7 @@ def get_admin_client() -> Client:
 # Subscribers
 # ---------------------------------------------------------------------------
 
+
 def add_subscriber(
     client: Client,
     email: str,
@@ -55,13 +56,7 @@ def add_subscriber(
         to indicate a new/pending row was written.
     """
     # Check if already active
-    existing = (
-        client.table("subscribers")
-        .select("*")
-        .eq("email", email)
-        .execute()
-        .data
-    )
+    existing = client.table("subscribers").select("*").eq("email", email).execute().data
     if existing and existing[0].get("is_active"):
         return existing[0]
 
@@ -103,13 +98,7 @@ def confirm_subscriber(
     Returns:
         The updated subscriber dict, or None if the token is invalid/expired.
     """
-    rows = (
-        client.table("subscribers")
-        .select("*")
-        .eq("confirmation_token", token)
-        .execute()
-        .data
-    )
+    rows = client.table("subscribers").select("*").eq("confirmation_token", token).execute().data
     if not rows:
         return None
 
@@ -138,24 +127,12 @@ def confirm_subscriber(
 
 def get_active_subscribers(client: Client) -> list[dict]:
     """Return subscribers where is_active is True."""
-    return (
-        client.table("subscribers")
-        .select("*")
-        .eq("is_active", True)
-        .execute()
-        .data
-    )
+    return client.table("subscribers").select("*").eq("is_active", True).execute().data
 
 
 def get_subscriber_by_email(client: Client, email: str) -> dict | None:
     """Return a subscriber row by email, or None if not found."""
-    rows = (
-        client.table("subscribers")
-        .select("*")
-        .eq("email", email)
-        .execute()
-        .data
-    )
+    rows = client.table("subscribers").select("*").eq("email", email).execute().data
     return rows[0] if rows else None
 
 
@@ -185,9 +162,7 @@ def deactivate_subscriber(client: Client, subscriber_id: str) -> bool:
     return bool(result.data)
 
 
-def issue_unsubscribe_token(
-    client: Client, subscriber_id: str, token: str, expires_at: str
-) -> bool:
+def issue_unsubscribe_token(client: Client, subscriber_id: str, token: str, expires_at: str) -> bool:
     """Store a short-lived unsubscribe token for a subscriber."""
     result = (
         client.table("subscribers")
@@ -237,11 +212,7 @@ def purge_inactive_subscribers(client: Client, older_than_days: int = 7) -> int:
     Returns the number of deleted rows.
     """
     rows: list[dict[str, Any]] = (
-        client.table("subscribers")
-        .select("id, unsubscribed_at, is_active")
-        .eq("is_active", False)
-        .execute()
-        .data
+        client.table("subscribers").select("id, unsubscribed_at, is_active").eq("is_active", False).execute().data
     )
     if not rows:
         return 0
@@ -259,13 +230,8 @@ def purge_inactive_subscribers(client: Client, older_than_days: int = 7) -> int:
     deleted = 0
     chunk_size = 200
     for start in range(0, len(to_delete), chunk_size):
-        chunk = to_delete[start: start + chunk_size]
-        result = (
-            client.table("subscribers")
-            .delete()
-            .in_("id", chunk)
-            .execute()
-        )
+        chunk = to_delete[start : start + chunk_size]
+        result = client.table("subscribers").delete().in_("id", chunk).execute()
         deleted += len(result.data or [])
     return deleted
 
@@ -273,6 +239,7 @@ def purge_inactive_subscribers(client: Client, older_than_days: int = 7) -> int:
 # ---------------------------------------------------------------------------
 # Subscription context (per-subscriber profile, queries, location)
 # ---------------------------------------------------------------------------
+
 
 def save_subscription_context(
     client: Client,
@@ -311,12 +278,7 @@ def set_subscriber_expiry(
 
     Called from pages/verify.py upon DOI confirmation.
     """
-    result = (
-        client.table("subscribers")
-        .update({"expires_at": expires_at})
-        .eq("id", subscriber_id)
-        .execute()
-    )
+    result = client.table("subscribers").update({"expires_at": expires_at}).eq("id", subscriber_id).execute()
     return bool(result.data)
 
 
@@ -343,14 +305,7 @@ def expire_subscriptions(client: Client) -> int:
     processed_count = 0
     for sid in ids:
         # Re-check is_active to guard against concurrent runs.
-        current = (
-            client.table("subscribers")
-            .select("is_active")
-            .eq("id", sid)
-            .maybe_single()
-            .execute()
-            .data
-        )
+        current = client.table("subscribers").select("is_active").eq("id", sid).maybe_single().execute().data
         if not current or not current.get("is_active"):
             continue
         deactivate_subscriber(client, sid)
@@ -395,27 +350,20 @@ def get_active_subscribers_with_profiles(client: Client) -> list[dict]:
     Only returns rows where profile_json is not null (subscribers who
     completed the full subscribe flow in the Streamlit UI).
     """
-    now_iso = datetime.now(timezone.utc).isoformat()
-    rows = (
-        client.table("subscribers")
-        .select("*")
-        .eq("is_active", True)
-        .not_.is_("profile_json", "null")
-        .execute()
-        .data
-    )
+    rows = client.table("subscribers").select("*").eq("is_active", True).not_.is_("profile_json", "null").execute().data
     # Filter out expired (belt-and-suspenders — expire_subscriptions()
     # should have already run, but be safe).
     return [
-        r for r in rows
-        if not r.get("expires_at")
-        or _parse_iso_utc(r["expires_at"]) > datetime.now(timezone.utc)  # type: ignore[operator]
+        r
+        for r in rows
+        if not r.get("expires_at") or _parse_iso_utc(r["expires_at"]) > datetime.now(timezone.utc)  # type: ignore[operator]
     ]
 
 
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
+
 
 def upsert_jobs(client: Client, jobs: list[dict]) -> list[dict]:
     """Insert jobs, skipping duplicates by URL.
@@ -436,36 +384,19 @@ def upsert_jobs(client: Client, jobs: list[dict]) -> list[dict]:
         }
         for j in jobs
     ]
-    return (
-        client.table("jobs")
-        .upsert(rows, on_conflict="url")
-        .execute()
-        .data
-    )
+    return client.table("jobs").upsert(rows, on_conflict="url").execute().data
 
 
 def get_all_jobs(client: Client) -> list[dict]:
     """Return all jobs ordered by id descending (newest first)."""
-    return (
-        client.table("jobs")
-        .select("*")
-        .order("id", desc=True)
-        .execute()
-        .data
-    )
+    return client.table("jobs").select("*").order("id", desc=True).execute().data
 
 
 def get_existing_urls(client: Client, urls: list[str]) -> set[str]:
     """Return the subset of *urls* that already exist in the jobs table."""
     if not urls:
         return set()
-    rows = (
-        client.table("jobs")
-        .select("url")
-        .in_("url", urls)
-        .execute()
-        .data
-    )
+    rows = client.table("jobs").select("url").in_("url", urls).execute().data
     return {r["url"] for r in rows}
 
 
@@ -473,13 +404,7 @@ def get_job_ids_by_urls(client: Client, urls: list[str]) -> dict[str, str]:
     """Return a mapping of URL → job UUID for the given URLs."""
     if not urls:
         return {}
-    rows = (
-        client.table("jobs")
-        .select("id, url")
-        .in_("url", urls)
-        .execute()
-        .data
-    )
+    rows = client.table("jobs").select("id, url").in_("url", urls).execute().data
     return {r["url"]: r["id"] for r in rows}
 
 
@@ -487,21 +412,14 @@ def get_job_ids_by_urls(client: Client, urls: list[str]) -> dict[str, str]:
 # Job sent log (prevents duplicate emails)
 # ---------------------------------------------------------------------------
 
+
 def get_sent_job_ids(client: Client, subscriber_id: str) -> set[str]:
     """Return job IDs (UUIDs) already sent to this subscriber."""
-    rows = (
-        client.table("job_sent_logs")
-        .select("job_id")
-        .eq("subscriber_id", subscriber_id)
-        .execute()
-        .data
-    )
+    rows = client.table("job_sent_logs").select("job_id").eq("subscriber_id", subscriber_id).execute().data
     return {r["job_id"] for r in rows}
 
 
-def log_sent_jobs(
-    client: Client, subscriber_id: str, job_ids: list[str]
-) -> None:
+def log_sent_jobs(client: Client, subscriber_id: str, job_ids: list[str]) -> None:
     """Record that these jobs were emailed to the subscriber."""
     if not job_ids:
         return

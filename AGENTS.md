@@ -430,3 +430,4 @@ StellenScout is **free to self-host** (bring your own API keys). The official ho
 - Integrate Stripe for paid newsletter subscriptions (Phase 2).
 - Set up CI/CD pipeline for automated testing and deployment.
 - Write contributor guidelines (CONTRIBUTING.md) and issue templates for the public repo.
+- The SerpAPI query and the job evaluation are currently separate steps. Can we combine them to save API calls? For example, can we ask Gemini to generate the search queries AND evaluate the jobs in one go? Or can we at least evaluate each job as we parse it, instead of collecting them all and then evaluating? This might increase speed.

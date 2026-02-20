@@ -19,31 +19,33 @@ Required env vars:
 
 import logging
 import os
-import sys
 import secrets
+import sys
 from collections import defaultdict
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from stellenscout.llm import create_client
-from stellenscout.search_agent import search_all_queries
-from stellenscout.evaluator_agent import evaluate_all_jobs
-from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing
 from stellenscout.db import (
-    get_admin_client as get_db,
-    upsert_jobs,
-    get_sent_job_ids,
-    log_sent_jobs,
-    issue_unsubscribe_token,
-    purge_inactive_subscribers,
     expire_subscriptions,
     get_active_subscribers_with_profiles,
     get_job_ids_by_urls,
+    get_sent_job_ids,
+    issue_unsubscribe_token,
+    log_sent_jobs,
+    purge_inactive_subscribers,
+    upsert_jobs,
+)
+from stellenscout.db import (
+    get_admin_client as get_db,
 )
 from stellenscout.emailer import send_daily_digest
+from stellenscout.evaluator_agent import evaluate_all_jobs
+from stellenscout.llm import create_client
+from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing
+from stellenscout.search_agent import search_all_queries
 
 logging.basicConfig(
     level=logging.INFO,
@@ -134,13 +136,15 @@ def main() -> int:
     for job in jobs_list:
         url = _listing_url(job)
         if url:
-            job_dicts.append({
-                "title": job.title,
-                "company": job.company_name,
-                "url": url,
-                "location": job.location,
-                "description": job.description,
-            })
+            job_dicts.append(
+                {
+                    "title": job.title,
+                    "company": job.company_name,
+                    "url": url,
+                    "location": job.location,
+                    "description": job.description,
+                }
+            )
 
     if job_dicts:
         upsert_jobs(db, job_dicts)
@@ -179,10 +183,7 @@ def main() -> int:
 
         # Find unseen jobs for this subscriber
         sent_ids = get_sent_job_ids(db, sub_id)
-        unseen_urls = [
-            url for url in all_urls
-            if url_to_db_id.get(url) and url_to_db_id[url] not in sent_ids
-        ]
+        unseen_urls = [url for url in all_urls if url_to_db_id.get(url) and url_to_db_id[url] not in sent_ids]
 
         if not unseen_urls:
             log.info("  %s — no unseen jobs, skipping", sub_email)
@@ -196,19 +197,12 @@ def main() -> int:
         evaluated = evaluate_all_jobs(gemini, profile, unseen_jobs)
 
         # Filter by subscriber's min score
-        good_matches = [
-            ej for ej in evaluated
-            if ej.evaluation.score >= sub_min_score
-        ]
+        good_matches = [ej for ej in evaluated if ej.evaluation.score >= sub_min_score]
 
         if not good_matches:
             log.info("  %s — no jobs above score %d", sub_email, sub_min_score)
             # Still log all evaluated jobs as "sent" to avoid re-evaluating
-            all_eval_ids = [
-                url_to_db_id[_job_url(ej)]
-                for ej in evaluated
-                if _job_url(ej) in url_to_db_id
-            ]
+            all_eval_ids = [url_to_db_id[_job_url(ej)] for ej in evaluated if _job_url(ej) in url_to_db_id]
             if all_eval_ids:
                 log_sent_jobs(db, sub_id, all_eval_ids)
             continue
@@ -229,7 +223,10 @@ def main() -> int:
             unsub_token = secrets.token_urlsafe(32)
             unsub_expires = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
             token_written = issue_unsubscribe_token(
-                db, sub_id, token=unsub_token, expires_at=unsub_expires,
+                db,
+                sub_id,
+                token=unsub_token,
+                expires_at=unsub_expires,
             )
             if token_written:
                 unsubscribe_url = f"{app_url}/unsubscribe?token={unsub_token}"
@@ -241,11 +238,7 @@ def main() -> int:
             log.exception("  %s — failed to send daily digest, continuing", sub_email)
 
         # Log ALL evaluated jobs (not just good matches) to avoid re-evaluation
-        all_eval_ids = [
-            url_to_db_id[_job_url(ej)]
-            for ej in evaluated
-            if _job_url(ej) in url_to_db_id
-        ]
+        all_eval_ids = [url_to_db_id[_job_url(ej)] for ej in evaluated if _job_url(ej) in url_to_db_id]
         if all_eval_ids:
             log_sent_jobs(db, sub_id, all_eval_ids)
 

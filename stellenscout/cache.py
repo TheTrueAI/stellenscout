@@ -5,7 +5,7 @@ import json
 from datetime import date
 from pathlib import Path
 
-from .models import CandidateProfile, JobListing, JobEvaluation, EvaluatedJob
+from .models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
 
 DEFAULT_CACHE_DIR = Path(".stellenscout_cache")
 
@@ -62,10 +62,13 @@ class ResultCache:
             return None
 
     def save_profile(self, cv_text: str, profile: CandidateProfile) -> None:
-        self._save("profile.json", {
-            "cv_hash": _hash(cv_text),
-            "profile": profile.model_dump(),
-        })
+        self._save(
+            "profile.json",
+            {
+                "cv_hash": _hash(cv_text),
+                "profile": profile.model_dump(),
+            },
+        )
 
     # ------------------------------------------------------------------
     # 2. Queries  (keyed by profile hash + location)
@@ -85,11 +88,14 @@ class ResultCache:
         return queries
 
     def save_queries(self, profile: CandidateProfile, location: str, queries: list[str]) -> None:
-        self._save("queries.json", {
-            "profile_hash": _profile_hash(profile),
-            "location": location,
-            "queries": queries,
-        })
+        self._save(
+            "queries.json",
+            {
+                "profile_hash": _profile_hash(profile),
+                "location": location,
+                "queries": queries,
+            },
+        )
 
     # ------------------------------------------------------------------
     # 3. Jobs  (date-based, merge new into existing)
@@ -117,10 +123,13 @@ class ResultCache:
             key = f"{job.title}|{job.company_name}"
             existing[key] = job.model_dump()
 
-        self._save("jobs.json", {
-            "last_search": date.today().isoformat(),
-            "jobs": existing,
-        })
+        self._save(
+            "jobs.json",
+            {
+                "last_search": date.today().isoformat(),
+                "jobs": existing,
+            },
+        )
 
     # ------------------------------------------------------------------
     # 4. Evaluations  (append-only, keyed by title|company)
@@ -145,16 +154,19 @@ class ResultCache:
         return result
 
     def save_evaluations(self, profile: CandidateProfile, evaluated: dict[str, EvaluatedJob]) -> None:
-        self._save("evaluations.json", {
-            "profile_hash": _profile_hash(profile),
-            "evaluated": {
-                key: {
-                    "job": ej.job.model_dump(),
-                    "evaluation": ej.evaluation.model_dump(),
-                }
-                for key, ej in evaluated.items()
+        self._save(
+            "evaluations.json",
+            {
+                "profile_hash": _profile_hash(profile),
+                "evaluated": {
+                    key: {
+                        "job": ej.job.model_dump(),
+                        "evaluation": ej.evaluation.model_dump(),
+                    }
+                    for key, ej in evaluated.items()
+                },
             },
-        })
+        )
 
     def get_unevaluated_jobs(
         self, jobs: list[JobListing], profile: CandidateProfile
@@ -164,8 +176,5 @@ class ResultCache:
         Jobs already in the evaluation cache are skipped.
         """
         cached = self.load_evaluations(profile)
-        new_jobs = [
-            job for job in jobs
-            if f"{job.title}|{job.company_name}" not in cached
-        ]
+        new_jobs = [job for job in jobs if f"{job.title}|{job.company_name}" not in cached]
         return new_jobs, cached

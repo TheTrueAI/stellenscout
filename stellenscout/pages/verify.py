@@ -1,6 +1,7 @@
 """Double Opt-In confirmation page."""
 
 import os
+
 import streamlit as st
 
 # Inject secrets into env vars (same pattern as app.py)
@@ -11,7 +12,7 @@ for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
         except (KeyError, FileNotFoundError):
             pass
 
-from stellenscout.db import get_admin_client, confirm_subscriber, set_subscriber_expiry, SUBSCRIPTION_DAYS  # noqa: E402
+from stellenscout.db import SUBSCRIPTION_DAYS, confirm_subscriber, get_admin_client, set_subscriber_expiry  # noqa: E402
 
 st.set_page_config(page_title="StellenScout – Confirm Subscription", page_icon="✅")
 
@@ -32,6 +33,7 @@ def _request_metadata() -> tuple[str | None, str | None]:
     user_agent = headers.get("user-agent") or headers.get("User-Agent")
     return ip_address, user_agent
 
+
 if not token:
     st.warning("No confirmation token found. Please use the link from your email.")
     st.stop()
@@ -51,7 +53,10 @@ except Exception as e:
 
 if subscriber:
     # Set auto-expiry: SUBSCRIPTION_DAYS days from confirmation
-    from datetime import datetime as _dt, timezone as _tz, timedelta as _td
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+    from datetime import timezone as _tz
+
     _expires = (_dt.now(_tz.utc) + _td(days=SUBSCRIPTION_DAYS)).isoformat()
     try:
         expiry_set = set_subscriber_expiry(db, subscriber["id"], _expires)
@@ -69,7 +74,4 @@ if subscriber:
     )
     st.balloons()
 else:
-    st.error(
-        "This confirmation link is invalid or has expired. "
-        "Please subscribe again."
-    )
+    st.error("This confirmation link is invalid or has expired. Please subscribe again.")

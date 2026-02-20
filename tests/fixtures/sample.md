@@ -1,0 +1,20 @@
+# John Doe
+## Software Engineer
+
+### Experience
+**Senior Developer** at TechCorp GmbH (2019–2024)
+- Built microservices in Python and Go
+- Led a team of 5 engineers
+
+**Junior Developer** at StartupXYZ (2017–2019)
+- Full-stack development with React and Node.js
+
+### Skills
+Python, Go, React, Node.js, Docker, Kubernetes, PostgreSQL, AWS
+
+### Education
+MSc Computer Science, Technical University of Munich (2017)
+
+### Languages
+- English: Native
+- German: B2
