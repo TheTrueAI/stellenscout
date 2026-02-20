@@ -174,7 +174,12 @@ _inject_custom_css()
 # Session state defaults
 # ---------------------------------------------------------------------------
 logger = logging.getLogger(__name__)
-_SUMMARY_EXECUTOR = ThreadPoolExecutor(max_workers=2)
+@st.cache_resource
+def _get_summary_executor() -> ThreadPoolExecutor:
+    return ThreadPoolExecutor(max_workers=2)
+
+
+_SUMMARY_EXECUTOR = _get_summary_executor()
 
 _DEFAULTS = {
     "profile": None,
@@ -189,7 +194,6 @@ _DEFAULTS = {
     "last_run_time": 0.0,
     "run_requested": False,
     "location": "",
-    "cv_processing_consent": False,
     "_cv_consent_given": False,
 }
 for k, v in _DEFAULTS.items():
@@ -557,9 +561,7 @@ if not has_cv:
     with col_center:
         st.checkbox(
             "I consent to processing my CV data for AI matching as described in the [Privacy Policy](/privacy).",
-            key="cv_processing_consent",
-            value=st.session_state._cv_consent_given,
-            on_change=lambda: setattr(st.session_state, '_cv_consent_given', st.session_state.cv_processing_consent),
+            key="_cv_consent_given",
         )
         hero_uploaded_file = st.file_uploader(
             "Upload your CV to get started",
