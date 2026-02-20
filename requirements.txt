@@ -16,13 +16,10 @@ google-genai>=1.0.0
 # Data validation
 pydantic>=2.5.0
 
-# Terminal UI
-rich>=13.7.0
-
 # Environment management
 python-dotenv>=1.0.0
 
-# Web UI (optional)
+# Web UI
 streamlit>=1.30.0
 pandas>=2.0.0
 

@@ -136,23 +136,6 @@ def evaluate_all_jobs(
     return evaluated
 
 
-def filter_good_matches(
-    evaluated_jobs: list[EvaluatedJob],
-    min_score: int = 70
-) -> list[EvaluatedJob]:
-    """
-    Filter evaluated jobs to only include good matches.
-
-    Args:
-        evaluated_jobs: List of evaluated jobs.
-        min_score: Minimum score threshold.
-
-    Returns:
-        Filtered list of jobs with score >= min_score.
-    """
-    return [ej for ej in evaluated_jobs if ej.evaluation.score >= min_score]
-
-
 # ---------------------------------------------------------------------------
 # Career advisor summary
 # ---------------------------------------------------------------------------
