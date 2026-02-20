@@ -386,3 +386,47 @@ job_sent_logs (
 - `get_subscriber_by_email()` — look up subscriber by email
 
 Schema setup: run `python setup_db.py` to check tables and print migration SQL.
+
+---
+
+## 12. Licensing & Distribution Strategy
+
+**License:** AGPL-3.0 (GNU Affero General Public License v3.0)
+
+**Model:** Open Source + Hosted Paid Service (open-core)
+
+The source code is publicly available on GitHub under AGPL-3.0. The AGPL requires that anyone who hosts a modified version of StellenScout must also release their source code — this protects against competitors forking the project and running a closed-source competing service.
+
+### What users pay for
+
+StellenScout is **free to self-host** (bring your own API keys). The official hosted version at the project domain charges a subscription fee for:
+- Managed hosting (no API key setup required)
+- SerpAPI & Gemini API quota included
+- Daily digest email infrastructure
+- Data retention & GDPR compliance handled
+
+### Monetisation phases
+
+1. **Phase 1 (Free launch):** Host a public demo with rate limits (e.g., 50 users cap or N searches/day). Build user base, validate demand, collect feedback.
+2. **Phase 2 (Paid newsletter):** Introduce Stripe subscription (~€5-9/month) for the daily digest newsletter. Free tier remains for one-time job searches without newsletter.
+3. **Phase 3 (Scale):** Expand based on traction — higher tiers, team plans, or API access.
+
+### Why AGPL-3.0
+
+- **Portfolio visibility:** Public GitHub repo with real production code is a strong hiring signal.
+- **Community contributions:** Bug reports, PRs, and feedback from users who self-host.
+- **Copyleft protection:** Competitors must open-source their modifications if they host a fork.
+- **Trust:** Users can audit exactly what happens to their CV data.
+
+---
+
+# Open Issues
+- How to deal with many API requests for SerpAPI? It's quite expensive at scale.
+- Make UI more engaging and personalized (use first name?).
+- Some jobs don't exist anymore, but are still found by SerpAPI through job aggregators. Can we detect and filter these better?
+- Let the user also personalize the search/evaluation by editing the generated queries, their profile, or having an extra "preferences" input (e.g., "I want to work in fintech", "I want a remote job", "I don't want to work for big corporations")?
+- Let the user upload multiple CVs (e.g., one for software engineering, one for data science) and route them to different job searches?
+- Let the user update their daily digest preferences (e.g., "only send me jobs with score > 80", "send me a weekly digest instead of daily")?
+- Integrate Stripe for paid newsletter subscriptions (Phase 2).
+- Set up CI/CD pipeline for automated testing and deployment.
+- Write contributor guidelines (CONTRIBUTING.md) and issue templates for the public repo.
