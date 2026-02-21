@@ -7,9 +7,11 @@ import pytest
 from stellenscout.models import (
     ApplyOption,
     CandidateProfile,
+    EducationEntry,
     EvaluatedJob,
     JobEvaluation,
     JobListing,
+    WorkEntry,
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -32,6 +34,51 @@ def sample_profile() -> CandidateProfile:
         certifications=["AWS Solutions Architect"],
         education=["MSc Computer Science, TU Munich"],
         summary="Senior engineer with 7 years of experience in Python and Go microservices.",
+        work_history=[
+            WorkEntry(
+                title="Senior Software Engineer",
+                company="FinPayments GmbH",
+                start_date="2021-06",
+                end_date=None,
+                duration_months=56,
+                skills_used=["Python", "Go", "Kubernetes", "AWS", "PostgreSQL"],
+                description="Leading backend platform team, designing microservices architecture.",
+            ),
+            WorkEntry(
+                title="Software Engineer",
+                company="CloudCorp AG",
+                start_date="2018-03",
+                end_date="2021-05",
+                duration_months=38,
+                skills_used=["Python", "Docker", "React", "PostgreSQL"],
+                description="Full-stack development of SaaS analytics platform.",
+            ),
+            WorkEntry(
+                title="Software Engineering Intern",
+                company="StartupXYZ",
+                start_date="2017-06",
+                end_date="2017-12",
+                duration_months=6,
+                skills_used=["Java", "Spring Boot"],
+                description="Built REST APIs for internal tooling.",
+            ),
+        ],
+        education_history=[
+            EducationEntry(
+                degree="MSc Computer Science",
+                institution="TU Munich",
+                start_date="2015-10",
+                end_date="2018-02",
+                status="completed",
+            ),
+            EducationEntry(
+                degree="BSc Computer Science",
+                institution="University of Stuttgart",
+                start_date="2012-10",
+                end_date="2015-09",
+                status="completed",
+            ),
+        ],
     )
 
 
