@@ -99,6 +99,7 @@ class TestJobsCache:
             ]
         )
         loaded = cache.load_jobs()
+        assert loaded is not None
         assert len(loaded) == 2
 
 
