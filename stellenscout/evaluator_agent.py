@@ -19,6 +19,13 @@ SCREENER_SYSTEM_PROMPT = """You are a strict Hiring Manager. Evaluate if the can
 - **50-79:** Potential fit. Strong skills but maybe junior/senior mismatch, or missing a key framework.
 - **0-49:** Hard pass. Wrong stack (Java vs Python), wrong language (requires German C2 but candidate is A1), or wrong role entirely.
 
+**Temporal weighting — this is critical:**
+- Pay close attention to the candidate's **Work History** timeline.
+- Weight RECENT experience (last 3 years) and LONGER tenures significantly more than old or brief roles.
+- A skill used for 3+ years in the most recent role is strong evidence. The same skill from a 3-month internship 10 years ago is weak evidence — treat it almost as if the candidate doesn't have it.
+- For education: a degree marked "in_progress" means the candidate has NOT graduated yet. Consider whether the job requires a completed degree.
+- If no work history is provided, fall back to the flat skills list and experience level.
+
 **Critical constraints:**
 - If the job description requires fluency in a local language (e.g., German, French, Dutch) and the candidate lacks that proficiency (A1/A2 or not listed), the score must be capped at 30.
 - Pay attention to visa/work permit requirements if mentioned.
@@ -47,12 +54,34 @@ def evaluate_job(client: genai.Client, profile: CandidateProfile, job: JobListin
     edu_line = f"\n- **Education:** {', '.join(profile.education)}" if profile.education else ""
     summary_line = f"\n- **Summary:** {profile.summary}" if profile.summary else ""
 
+    # Build work-history timeline section
+    work_history_section = ""
+    if profile.work_history:
+        lines = []
+        for w in profile.work_history:
+            end = w.end_date or "present"
+            dur = f", ~{w.duration_months}mo" if w.duration_months else ""
+            skills = f" | Skills: {', '.join(w.skills_used)}" if w.skills_used else ""
+            lines.append(f"- {w.title} @ {w.company} ({w.start_date} – {end}{dur}){skills}")
+        work_history_section = "\n\n## Work History (most recent first)\n" + "\n".join(lines)
+
+    # Build education-history section
+    education_history_section = ""
+    if profile.education_history:
+        lines = []
+        for e in profile.education_history:
+            dates = ""
+            if e.start_date or e.end_date:
+                dates = f" ({e.start_date or '?'} – {e.end_date or 'present'})"
+            lines.append(f"- {e.degree} @ {e.institution}{dates} [{e.status}]")
+        education_history_section = "\n\n## Education History\n" + "\n".join(lines)
+
     user_prompt = f"""## Candidate Profile
 - **Skills:** {", ".join(profile.skills)}
 - **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
 - **Target Roles:** {", ".join(profile.roles)}
 - **Languages:** {", ".join(profile.languages)}
-- **Domain Expertise:** {", ".join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}
+- **Domain Expertise:** {", ".join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}{work_history_section}{education_history_section}
 
 ## Job Listing
 - **Title:** {job.title}
@@ -194,11 +223,20 @@ def generate_summary(
 
     dist_text = ", ".join(f"{k}: {v}" for k, v in bins.items())
 
+    # Build condensed career timeline for the advisor
+    career_timeline = ""
+    if profile.work_history:
+        tl_lines = []
+        for w in profile.work_history[:5]:  # top 5 most recent
+            end = w.end_date or "present"
+            tl_lines.append(f"- {w.title} @ {w.company} ({w.start_date} – {end})")
+        career_timeline = "\n\n## Career Timeline (recent)\n" + "\n".join(tl_lines)
+
     user_prompt = f"""## Candidate Profile
 - **Skills:** {", ".join(profile.skills)}
 - **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
 - **Target Roles:** {", ".join(profile.roles)}
-- **Languages:** {", ".join(profile.languages)}
+- **Languages:** {", ".join(profile.languages)}{career_timeline}
 
 ## Score Distribution ({len(evaluated_jobs)} jobs evaluated)
 {dist_text}

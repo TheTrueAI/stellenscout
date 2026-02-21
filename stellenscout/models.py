@@ -5,6 +5,32 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class WorkEntry(BaseModel):
+    """A single work-experience entry with temporal context."""
+
+    title: str = Field(description="Job title held")
+    company: str = Field(description="Employer / organisation name")
+    start_date: str = Field(description="Start date, e.g. '2020-03' or '2020'")
+    end_date: str | None = Field(default=None, description="End date, or null if this is the current role")
+    duration_months: int | None = Field(
+        default=None, description="Estimated duration in months (useful when dates are vague)"
+    )
+    skills_used: list[str] = Field(default_factory=list, description="Key skills exercised in this role")
+    description: str = Field(default="", description="One-sentence summary of what was done")
+
+
+class EducationEntry(BaseModel):
+    """A single education entry with completion status."""
+
+    degree: str = Field(description="Degree name, e.g. 'MSc Computer Science'")
+    institution: str = Field(default="", description="University or school name")
+    start_date: str | None = Field(default=None, description="Start date if available")
+    end_date: str | None = Field(default=None, description="End date / graduation date, null if ongoing")
+    status: Literal["completed", "in_progress", "dropped"] = Field(
+        default="completed", description="Whether the degree was completed, is in progress, or was dropped"
+    )
+
+
 class CandidateProfile(BaseModel):
     """Structured summary of a candidate's CV."""
 
@@ -23,6 +49,14 @@ class CandidateProfile(BaseModel):
         default_factory=list, description="Degrees and fields of study (e.g., 'MSc Environmental Engineering')"
     )
     summary: str = Field(default="", description="2-3 sentence professional summary of the candidate")
+    work_history: list[WorkEntry] = Field(
+        default_factory=list,
+        description="Chronological work experience, most recent first",
+    )
+    education_history: list[EducationEntry] = Field(
+        default_factory=list,
+        description="Education entries with completion status",
+    )
 
 
 class ApplyOption(BaseModel):

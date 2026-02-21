@@ -209,6 +209,7 @@ PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep know
 You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
 
 Be THOROUGH — capture everything relevant. Do not summarize away important details.
+Pay special attention to DATES and DURATIONS for each role and degree.
 
 Return a JSON object with:
 - "skills": List of ALL hard skills, tools, frameworks, methodologies, and technical competencies mentioned. Include specific tools (e.g., "SAP", "Power BI"), standards (e.g., "ISO 14064", "GHG Protocol"), and methods. Aim for 15-20 items.
@@ -220,6 +221,25 @@ Return a JSON object with:
 - "certifications": List of professional certifications, accreditations, or licenses (e.g., "PMP", "AWS Solutions Architect"). Empty list if none.
 - "education": List of degrees with field of study (e.g., "MSc Environmental Engineering", "BSc Computer Science"). Include the university name if mentioned.
 - "summary": A 2-3 sentence professional summary describing the candidate's core strengths and career trajectory.
+- "work_history": Array of work-experience objects, ordered MOST RECENT FIRST. Each object has:
+  - "title": (string) Job title held.
+  - "company": (string) Employer name.
+  - "start_date": (string) e.g. "2020-03" or "2020". Use the best precision available.
+  - "end_date": (string or null) null means this is the CURRENT role.
+  - "duration_months": (int or null) Estimated duration in months. Calculate from dates; if dates are vague, estimate.
+  - "skills_used": (list of strings) Key skills, tools, and technologies used in THIS specific role.
+  - "description": (string) One-sentence summary of responsibilities/achievements.
+- "education_history": Array of education objects. Each object has:
+  - "degree": (string) e.g. "MSc Computer Science".
+  - "institution": (string) University or school name.
+  - "start_date": (string or null) Start date if available.
+  - "end_date": (string or null) Graduation date, or null if still studying.
+  - "status": One of "completed", "in_progress", "dropped". If the CV says "expected 2026" or has no graduation date and appears current, use "in_progress".
+
+Be precise about dates:
+- If the CV says "2020 – present", set end_date to null.
+- If it says "2018 – 2020", estimate duration_months (e.g. 24).
+- For education, mark degrees without a graduation date or with "expected" as "in_progress".
 
 Return ONLY valid JSON, no markdown or explanation."""
 

@@ -19,6 +19,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 > You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
 >
 > Be THOROUGH — capture everything relevant. Do not summarize away important details.
+> Pay special attention to DATES and DURATIONS for each role and degree.
 >
 > Return a JSON object with:
 > - `skills`: List of ALL hard skills, tools, frameworks, methodologies, and technical competencies mentioned. Aim for 15-20 items.
@@ -30,6 +31,10 @@ This document defines the persona, context, and instruction sets for the AI agen
 > - `certifications`: List of professional certifications, accreditations, or licenses. Empty list if none.
 > - `education`: List of degrees with field of study and university name if mentioned.
 > - `summary`: A 2-3 sentence professional summary describing the candidate's core strengths and career trajectory.
+> - `work_history`: Array of work-experience objects, ordered MOST RECENT FIRST. Each has: `title`, `company`, `start_date`, `end_date` (null if current), `duration_months`, `skills_used` (list), `description`.
+> - `education_history`: Array of education objects. Each has: `degree`, `institution`, `start_date`, `end_date` (null if ongoing), `status` ("completed", "in_progress", or "dropped").
+>
+> Be precise about dates. If the CV says "2020 – present", set end_date to null. If it says "2018 – 2020", estimate duration_months. For education, mark degrees without a graduation date or with "expected" as "in_progress".
 
 **Generation Config:**
 - Temperature: 0.3
@@ -79,7 +84,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 
 **Role:** Hiring Manager
 **Input:**
-1. The Candidate's structured profile (skills, experience, education, certifications, summary).
+1. The Candidate's structured profile (skills, experience, education, certifications, summary, work_history, education_history).
 2. A specific Job Description (Title, Company, Location, Description text).
 
 **Output:** A JSON object with score, reasoning, and missing skills.
@@ -92,6 +97,12 @@ This document defines the persona, context, and instruction sets for the AI agen
 > - **80-99:** Great match. Missing minor "nice-to-haves" but strong core skills.
 > - **50-79:** Potential fit. Strong skills but junior/senior mismatch or missing a key framework.
 > - **0-49:** Hard pass. Wrong stack, wrong language, or wrong role entirely.
+>
+> **Temporal weighting — this is critical:**
+> - Weight RECENT experience (last 3 years) and LONGER tenures significantly more than old or brief roles.
+> - A skill used for 3+ years in the most recent role is strong evidence. The same skill from a 3-month internship 10 years ago is weak evidence.
+> - For education: a degree marked "in_progress" means the candidate has NOT graduated yet.
+> - If no work history is provided, fall back to the flat skills list and experience level.
 >
 > **Critical constraints:**
 > - If the job requires fluency in a local language (e.g., German, French, Dutch) and the candidate lacks that proficiency (A1/A2 or not listed), the score must be capped at 30.
@@ -175,6 +186,22 @@ Listings with no remaining apply links after filtering are skipped entirely.
 All models use `Field()` with descriptions and defaults where appropriate.
 
 ```python
+class WorkEntry(BaseModel):
+    title: str                           # job title held
+    company: str                         # employer name
+    start_date: str                      # e.g. "2020-03" or "2020"
+    end_date: str | None = None          # null = current role
+    duration_months: int | None = None   # estimated from dates
+    skills_used: list[str] = []          # skills exercised in this role
+    description: str = ""                # one-sentence summary
+
+class EducationEntry(BaseModel):
+    degree: str                          # e.g. "MSc Computer Science"
+    institution: str = ""                # university / school
+    start_date: str | None = None
+    end_date: str | None = None          # null = still studying
+    status: Literal["completed", "in_progress", "dropped"] = "completed"
+
 class CandidateProfile(BaseModel):
     skills: list[str]                    # 15-20 hard skills
     experience_level: Literal["Junior", "Mid", "Senior", "Lead", "CTO"]
@@ -185,6 +212,8 @@ class CandidateProfile(BaseModel):
     certifications: list[str] = []       # empty list if none
     education: list[str] = []            # degree + university
     summary: str = ""                    # 2-3 sentence professional summary
+    work_history: list[WorkEntry] = []   # chronological, most recent first
+    education_history: list[EducationEntry] = []  # with completion status
 
 class ApplyOption(BaseModel):
     source: str                          # e.g., "LinkedIn", "Company Website"
