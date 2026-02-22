@@ -571,7 +571,13 @@ if not has_cv:
     with col_center:
         st.checkbox(
             "I consent to processing my CV data for AI matching as described in the [Privacy Policy](/privacy).",
-            key="_cv_consent_given",
+            key="cv_consent_checkbox",
+            value=st.session_state._cv_consent_given,
+            on_change=lambda: setattr(
+                st.session_state,
+                "_cv_consent_given",
+                st.session_state.cv_consent_checkbox,
+            ),
         )
         hero_uploaded_file = st.file_uploader(
             "Upload your CV to get started",
