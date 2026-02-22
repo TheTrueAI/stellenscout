@@ -429,7 +429,36 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 
 ---
 
-## 12. Licensing & Distribution Strategy
+## 12. Testing (`tests/`)
+
+**Framework:** pytest + pytest-cov
+**Linting:** ruff (lint + format), mypy (strict mode)
+**Pre-commit:** all checks run via pre-commit hooks (see `.pre-commit-config.yaml`)
+
+### Test files
+
+| File | Module under test | What's covered |
+|---|---|---|
+| `test_llm.py` | `llm.py` | `parse_json()` (8 cases: raw, fenced, embedded, nested, errors) + `call_gemini()` retry logic (4 cases: success, ServerError retry, 429 retry, non-429 immediate raise) |
+| `test_evaluator_agent.py` | `evaluator_agent.py` | `evaluate_job()` (4 cases: happy path, API error fallback, parse error fallback, non-dict fallback) + `evaluate_all_jobs()` (3 cases: sorted output, progress callback, empty list) + `generate_summary()` (2 cases: score distribution in prompt, missing skills in prompt) |
+| `test_search_agent.py` | `search_agent.py` | `_infer_gl()` (10 cases) + `_localise_query()` (6 cases) + `_parse_job_results()` (5 cases) + `search_all_queries()` (3 cases: location auto-append with localisation, no double-append, early stopping) |
+| `test_cache.py` | `cache.py` | All cache operations: profile, queries, jobs (merge/dedup), evaluations, unevaluated job filtering |
+| `test_cv_parser.py` | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
+| `test_models.py` | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
+| `test_db.py` | `db.py` | Full GDPR lifecycle: add/confirm/expire/purge subscribers, deactivate by token, data deletion. All DB functions mocked at Supabase client level |
+| `test_emailer.py` | `emailer.py` | HTML generation: job row badges, job count, unsubscribe link, impressum line |
+| `test_app_consent.py` | `app.py` | GDPR consent checkbox: session state persistence, widget key separation, on_change sync |
+
+### Testing conventions
+- All external services (Gemini API, SerpAPI, Supabase) are mocked — no API keys needed to run tests
+- Shared fixtures in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
+- Test fixtures (text files) live in `tests/fixtures/`
+- Run: `pytest tests/ -v`
+- Coverage: `pytest tests/ --cov=stellenscout --cov-report=term-missing`
+
+---
+
+## 13. Licensing & Distribution Strategy
 
 **License:** AGPL-3.0 (GNU Affero General Public License v3.0)
 
@@ -468,6 +497,5 @@ StellenScout is **free to self-host** (bring your own API keys). The official ho
 - Let the user upload multiple CVs (e.g., one for software engineering, one for data science) and route them to different job searches?
 - Let the user update their daily digest preferences (e.g., "only send me jobs with score > 80", "send me a weekly digest instead of daily")?
 - Integrate Stripe for paid newsletter subscriptions (Phase 2).
-- Set up CI/CD pipeline for automated testing and deployment.
 - Write contributor guidelines (CONTRIBUTING.md) and issue templates for the public repo.
 - The SerpAPI query and the job evaluation are currently separate steps. Can we combine them to save API calls? For example, can we ask Gemini to generate the search queries AND evaluate the jobs in one go? Or can we at least evaluate each job as we parse it, instead of collecting them all and then evaluating? This might increase speed.

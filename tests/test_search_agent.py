@@ -1,8 +1,16 @@
-"""Tests for stellenscout.search_agent — pure helper functions."""
+"""Tests for stellenscout.search_agent — pure helper functions and search_all_queries orchestration."""
+
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stellenscout.search_agent import _infer_gl, _localise_query, _parse_job_results
+from stellenscout.models import ApplyOption, JobListing
+from stellenscout.search_agent import (
+    _infer_gl,
+    _localise_query,
+    _parse_job_results,
+    search_all_queries,
+)
 
 
 class TestInferGl:
@@ -130,3 +138,57 @@ class TestParseJobResults:
         jobs = _parse_job_results(results)
         assert "Main desc." in jobs[0].description
         assert "Skill: Python" in jobs[0].description
+
+
+class TestSearchAllQueries:
+    """Tests for search_all_queries() — mock search_jobs to test orchestration logic."""
+
+    def _make_job(self, title: str, company: str = "Co") -> JobListing:
+        return JobListing(
+            title=title,
+            company_name=company,
+            location="Berlin",
+            apply_options=[ApplyOption(source="LinkedIn", url="https://linkedin.com/1")],
+        )
+
+    @patch("stellenscout.search_agent.search_jobs")
+    def test_appends_localised_location_to_query_without_one(self, mock_search: MagicMock):
+        mock_search.return_value = [self._make_job("Dev")]
+
+        search_all_queries(
+            queries=["Python Developer"],
+            location="Munich, Germany",
+            min_unique_jobs=0,
+        )
+
+        # The query should have "München" appended (localised) and then localised again (no-op)
+        actual_query = mock_search.call_args[0][0]
+        assert "München" in actual_query
+
+    @patch("stellenscout.search_agent.search_jobs")
+    def test_does_not_double_append_location(self, mock_search: MagicMock):
+        mock_search.return_value = [self._make_job("Dev")]
+
+        search_all_queries(
+            queries=["Python Developer München"],
+            location="Munich, Germany",
+            min_unique_jobs=0,
+        )
+
+        # Query already contains "münchen" (location keyword) so location should NOT be appended
+        actual_query = mock_search.call_args[0][0]
+        assert actual_query.count("München") == 1
+
+    @patch("stellenscout.search_agent.search_jobs")
+    def test_stops_early_when_min_unique_jobs_reached(self, mock_search: MagicMock):
+        mock_search.return_value = [self._make_job("Unique Job")]
+
+        results = search_all_queries(
+            queries=["query1", "query2", "query3"],
+            location="Berlin, Germany",
+            min_unique_jobs=1,
+        )
+
+        # Should stop after first query yields 1 unique job
+        assert mock_search.call_count == 1
+        assert len(results) == 1
