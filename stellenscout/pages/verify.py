@@ -1,8 +1,11 @@
 """Double Opt-In confirmation page."""
 
+import logging
 import os
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 # Inject secrets into env vars (same pattern as app.py)
 for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
@@ -47,8 +50,9 @@ try:
         confirm_ip=confirm_ip,
         confirm_user_agent=confirm_ua,
     )
-except Exception as e:
-    st.error(f"An error occurred: {e}")
+except Exception:
+    logger.exception("Error during subscription confirmation")
+    st.error("Something went wrong. Please try again later.")
     st.stop()
 
 if subscriber:
@@ -60,8 +64,9 @@ if subscriber:
     _expires = (_dt.now(_tz.utc) + _td(days=SUBSCRIPTION_DAYS)).isoformat()
     try:
         expiry_set = set_subscriber_expiry(db, subscriber["id"], _expires)
-    except Exception as e:
-        st.error(f"Failed to set subscription expiry: {e}")
+    except Exception:
+        logger.exception("Failed to set subscription expiry")
+        st.error("Something went wrong. Please try confirming again later.")
         st.stop()
 
     if not expiry_set:

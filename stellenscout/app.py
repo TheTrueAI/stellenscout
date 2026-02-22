@@ -3,6 +3,7 @@
 import hashlib
 import logging
 import os
+import re
 import secrets
 import shutil
 import tempfile
@@ -819,16 +820,63 @@ def _run_pipeline() -> None:
 # Run pipeline on button click
 # ---------------------------------------------------------------------------
 _RATE_LIMIT_SECONDS = 30
+_RATE_LIMIT_STALE_SECONDS = 300  # clean up entries older than 5 min
+
+# Module-level dict shared across sessions on the same Streamlit instance
+_ip_rate_limit: dict[str, float] = {}
+
+
+def _get_client_ip() -> str | None:
+    """Extract client IP from X-Forwarded-For header."""
+    try:
+        headers = dict(st.context.headers)
+    except Exception:
+        return None
+    forwarded_for = headers.get("x-forwarded-for") or headers.get("X-Forwarded-For")
+    if forwarded_for:
+        return forwarded_for.split(",")[0].strip()
+    return None
+
+
+def _check_ip_rate_limit() -> int | None:
+    """Return seconds remaining if IP is rate-limited, else None. Also cleans stale entries."""
+    now = time.monotonic()
+    # Purge stale entries
+    stale = [ip for ip, ts in _ip_rate_limit.items() if now - ts > _RATE_LIMIT_STALE_SECONDS]
+    for ip in stale:
+        del _ip_rate_limit[ip]
+
+    client_ip = _get_client_ip()
+    if not client_ip:
+        return None
+    last_run = _ip_rate_limit.get(client_ip)
+    if last_run is not None:
+        elapsed = now - last_run
+        if elapsed < _RATE_LIMIT_SECONDS:
+            return int(_RATE_LIMIT_SECONDS - elapsed)
+    return None
+
+
+def _record_ip_rate_limit() -> None:
+    """Record the current time for the client's IP."""
+    client_ip = _get_client_ip()
+    if client_ip:
+        _ip_rate_limit[client_ip] = time.monotonic()
+
 
 if st.session_state.run_requested and st.session_state.profile is not None:
     st.session_state.run_requested = False
+    # Check session-based rate limit
     elapsed = time.monotonic() - st.session_state.last_run_time
     if elapsed < _RATE_LIMIT_SECONDS:
         remaining = int(_RATE_LIMIT_SECONDS - elapsed)
         st.warning(f"Please wait {remaining}s before running again.")
+    elif (ip_remaining := _check_ip_rate_limit()) is not None:
+        st.warning(f"Please wait {ip_remaining}s before running again.")
     elif _keys_ok():
         try:
             st.session_state.last_run_time = time.monotonic()
+            _record_ip_rate_limit()
             _run_pipeline()
             st.rerun()
         except Exception:
@@ -964,8 +1012,12 @@ if st.session_state.evaluated_jobs is not None:
             value=False,
         )
 
+    _EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
     if sub_submit and sub_email:
-        if not sub_consent:
+        if not _EMAIL_RE.match(sub_email.strip()):
+            st.error("Please enter a valid email address.")
+        elif not sub_consent:
             st.warning("Please agree to the Privacy Policy to subscribe.")
         elif st.session_state.profile is None or st.session_state.queries is None:
             st.warning("Please run a job search before subscribing so we can save your profile.")
@@ -1068,5 +1120,6 @@ if st.session_state.evaluated_jobs is not None:
                             )
                     else:
                         st.error("Could not retrieve your subscription details. Please try again.")
-            except Exception as _sub_err:
-                st.error(f"Could not subscribe: {_sub_err}")
+            except Exception:
+                logger.exception("Subscription error")
+                st.error("Could not subscribe. Please try again later.")

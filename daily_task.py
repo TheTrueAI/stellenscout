@@ -173,12 +173,12 @@ def main() -> int:
         # Reconstruct profile from stored JSON
         profile_data = sub.get("profile_json")
         if not profile_data:
-            log.warning("  %s — no profile_json, skipping", sub_email)
+            log.warning("  sub=%s — no profile_json, skipping", sub_id)
             continue
         try:
             profile = CandidateProfile(**profile_data)
         except Exception:
-            log.exception("  %s — invalid profile_json, skipping", sub_email)
+            log.exception("  sub=%s — invalid profile_json, skipping", sub_id)
             continue
 
         # Find unseen jobs for this subscriber
@@ -186,12 +186,12 @@ def main() -> int:
         unseen_urls = [url for url in all_urls if url_to_db_id.get(url) and url_to_db_id[url] not in sent_ids]
 
         if not unseen_urls:
-            log.info("  %s — no unseen jobs, skipping", sub_email)
+            log.info("  sub=%s — no unseen jobs, skipping", sub_id)
             continue
 
         # Build JobListing objects for unseen jobs
         unseen_jobs = [url_to_job[url] for url in unseen_urls if url in url_to_job]
-        log.info("  %s — evaluating %d unseen jobs", sub_email, len(unseen_jobs))
+        log.info("  sub=%s — evaluating %d unseen jobs", sub_id, len(unseen_jobs))
 
         # Evaluate unseen jobs against this subscriber's profile
         evaluated = evaluate_all_jobs(gemini, profile, unseen_jobs)
@@ -200,7 +200,7 @@ def main() -> int:
         good_matches = [ej for ej in evaluated if ej.evaluation.score >= sub_min_score]
 
         if not good_matches:
-            log.info("  %s — no jobs above score %d", sub_email, sub_min_score)
+            log.info("  sub=%s — no jobs above score %d", sub_id, sub_min_score)
             # Still log all evaluated jobs as "sent" to avoid re-evaluating
             all_eval_ids = [url_to_db_id[_job_url(ej)] for ej in evaluated if _job_url(ej) in url_to_db_id]
             if all_eval_ids:
@@ -231,11 +231,11 @@ def main() -> int:
             if token_written:
                 unsubscribe_url = f"{app_url}/unsubscribe?token={unsub_token}"
 
-        log.info("  %s — sending %d matches (score >= %d)", sub_email, len(email_jobs), sub_min_score)
+        log.info("  sub=%s — sending %d matches (score >= %d)", sub_id, len(email_jobs), sub_min_score)
         try:
             send_daily_digest(sub_email, email_jobs, unsubscribe_url=unsubscribe_url)
         except Exception:
-            log.exception("  %s — failed to send daily digest, continuing", sub_email)
+            log.exception("  sub=%s — failed to send daily digest, continuing", sub_id)
 
         # Log ALL evaluated jobs (not just good matches) to avoid re-evaluation
         all_eval_ids = [url_to_db_id[_job_url(ej)] for ej in evaluated if _job_url(ej) in url_to_db_id]
