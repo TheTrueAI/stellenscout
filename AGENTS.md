@@ -489,6 +489,75 @@ StellenScout is **free to self-host** (bring your own API keys). The official ho
 
 ---
 
+## 14. Development Workflow & Agent Instructions
+
+This section documents the development process and conventions for both human and AI agents working on this codebase. `CLAUDE.md` is a symlink to this file, so any AI coding agent (Copilot Chat, Claude Code CLI, etc.) will read these instructions automatically.
+
+### Quick Reference (for AI agents)
+
+```bash
+# Test:    pytest tests/ -x -q
+# Lint:    ruff check . && ruff format --check .
+# Types:   mypy .
+# Run app: streamlit run stellenscout/app.py
+# All:     ruff check . && mypy . && pytest tests/ -x -q
+```
+
+### Conventions for AI agents
+
+- Use `google-genai` package, NOT the deprecated `google.generativeai`
+- Gemini model: `gemini-3-flash-preview`
+- Pydantic models live in `stellenscout/models.py` — follow existing patterns
+- All external services (Gemini, SerpAPI, Supabase, Resend) must be mocked in tests — no API keys needed to run `pytest`
+- Shared test fixtures in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
+- Test fixture files (sample CVs, etc.) live in `tests/fixtures/`
+- All DB writes use the admin client (`get_admin_client()`), never the anon client
+- Log subscriber UUIDs, never email addresses
+- All `st.error()` calls must show generic messages; real exceptions go to `logger.exception()`
+- Follow the test file naming convention: `tests/test_<module>.py` for `stellenscout/<module>.py`
+- After implementing changes, always run `pytest tests/ -x -q` to verify nothing is broken
+
+### Development workflow
+
+The recommended workflow for implementing tasks/issues:
+
+1. **Pick the next unchecked task** from `ROADMAP.md`
+2. **Plan the implementation** in Copilot Chat — describe the task, ask for a plan, review it
+3. **Implement via Copilot Chat** (agent mode) — let the agent write code, create files, and run tests. It will implement → test → fix in a loop.
+4. **Review the diff locally** — check changed files, run the Streamlit app once if needed
+5. **Pre-push hooks handle quality gates** — `ruff`, `mypy`, `detect-secrets` run on commit; `pytest` runs on push (see `.pre-commit-config.yaml`)
+6. **Push and create PR from the terminal:**
+   ```bash
+   git checkout -b feat/<task-slug>
+   git add -A && git commit -m "feat: <description>"
+   git push -u origin feat/<task-slug>
+   gh pr create --fill
+   ```
+7. **GitHub Copilot reviews the PR** as a safety net (async, in CI)
+8. **Merge:**
+   ```bash
+   gh pr merge --squash --delete-branch
+   ```
+9. **Mark the task as done** in `ROADMAP.md` (change `- [ ]` to `- [x]`)
+
+### Tool allocation (token efficiency)
+
+| Task | Tool | Rationale |
+|---|---|---|
+| Planning & architecture | Copilot Chat | Interactive discussion and design decisions |
+| Multi-file implementation | Copilot Chat (agent mode) | Agentic loop: implements → tests → fixes autonomously |
+| Small in-file edits | Copilot inline completions | Free, fast tab-complete |
+| Pre-push code review | Copilot Chat | Review `git diff` output for bugs and convention deviations |
+| PR review (second opinion) | GitHub Copilot on PR | Async safety net, catches things the local review missed |
+
+### Pre-commit & pre-push hooks
+
+Already configured in `.pre-commit-config.yaml`:
+- **On commit:** trailing whitespace, YAML/TOML/JSON checks, large file check, merge conflict detection, private key detection, secrets scanning, ruff lint+format, mypy
+- **On push:** full test suite (`pytest tests/ -x -q --tb=short`)
+
+---
+
 # Open Issues
 - How to deal with many API requests for SerpAPI? It's quite expensive at scale.
 - Make UI more engaging and personalized (use first name?).
