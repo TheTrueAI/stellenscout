@@ -273,7 +273,10 @@ Features:
 - Sidebar: status panel, min score slider, secondary CV uploader, legal links
 - GDPR consent checkbox required before CV upload (consent text versioned as `_CONSENT_TEXT_VERSION`)
 - CV file size limit: 5 MB; text truncated at 50,000 chars
-- Rate limiting: 30-second cooldown between pipeline runs
+- Rate limiting: 30-second cooldown between pipeline runs (session-based + IP-based)
+- IP-based rate limiting: module-level `_ip_rate_limit` dict tracks `{ip: timestamp}`; extracts client IP from `X-Forwarded-For` header; stale entries purged after 5 minutes
+- Email format validation: regex check (`^[^@\s]+@[^@\s]+\.[^@\s]+$`) before `add_subscriber()` rejects obviously invalid addresses
+- Error message sanitization: all `st.error()` calls show generic messages; real exceptions logged server-side via `logger.exception()`
 - Newsletter subscription with Double Opt-In (see §10)
 - API keys via `.streamlit/secrets.toml` or environment variables
 
@@ -288,8 +291,8 @@ Features:
 ## 9. CV Parser (`cv_parser.py`)
 
 Supported formats:
-- `.pdf` — via `pdfplumber`
-- `.docx` — via `python-docx`
+- `.pdf` — via `pdfplumber` (max 50 pages; raises `ValueError` if exceeded)
+- `.docx` — via `python-docx` (max 2,000 paragraphs; raises `ValueError` if exceeded)
 - `.md`, `.txt` — direct file read (UTF-8)
 
 ---
@@ -337,6 +340,8 @@ Per-subscriber pipeline, designed to run in GitHub Actions (or any cron schedule
    f. Log ALL evaluated jobs (not just good matches) to avoid re-evaluation
 8. Exit
 
+**Privacy:** All log messages reference subscribers by UUID (`sub=<id>`), never by email address. Email addresses are only used in the `send_daily_digest()` call.
+
 Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`.
 
 ### Email Templates (`emailer.py`)
@@ -353,6 +358,12 @@ Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SE
 ### Two client types
 - `get_client()` — uses `SUPABASE_KEY` (anon/publishable), subject to RLS
 - `get_admin_client()` — uses `SUPABASE_SERVICE_KEY` (service-role), bypasses RLS; required for all writes
+
+### Row-Level Security (RLS) Policies
+RLS is enabled on all tables. Explicit policies enforce defense-in-depth:
+- **`subscribers`** — deny all anon access (all ops go through service role)
+- **`job_sent_logs`** — deny all anon access
+- **`jobs`** — allow anon SELECT (public data); deny anon INSERT, UPDATE, DELETE
 
 ### Tables
 

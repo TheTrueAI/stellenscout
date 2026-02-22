@@ -47,11 +47,17 @@ def extract_text(cv_path: str | Path) -> str:
     return text
 
 
+_MAX_PDF_PAGES = 50
+_MAX_DOCX_PARAGRAPHS = 2000
+
+
 def _extract_from_pdf(pdf_path: Path) -> str:
     """Extract text from a PDF file."""
     text_parts: list[str] = []
 
     with pdfplumber.open(pdf_path) as pdf:
+        if len(pdf.pages) > _MAX_PDF_PAGES:
+            raise ValueError(f"PDF has {len(pdf.pages)} pages (limit: {_MAX_PDF_PAGES}).")
         for page in pdf.pages:
             page_text = page.extract_text()
             if page_text:
@@ -63,6 +69,8 @@ def _extract_from_pdf(pdf_path: Path) -> str:
 def _extract_from_docx(docx_path: Path) -> str:
     """Extract text from a DOCX file."""
     doc = docx.Document(str(docx_path))
+    if len(doc.paragraphs) > _MAX_DOCX_PARAGRAPHS:
+        raise ValueError(f"DOCX has {len(doc.paragraphs)} paragraphs (limit: {_MAX_DOCX_PARAGRAPHS}).")
     paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
     return "\n\n".join(paragraphs)
 

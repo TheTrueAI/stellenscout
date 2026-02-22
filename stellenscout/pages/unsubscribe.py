@@ -1,8 +1,11 @@
 """One-click unsubscribe page."""
 
+import logging
 import os
 
 import streamlit as st
+
+logger = logging.getLogger(__name__)
 
 # Inject secrets into env vars
 for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
@@ -25,8 +28,9 @@ if not unsubscribe_token:
 try:
     db = get_admin_client()
     success = deactivate_subscriber_by_token(db, unsubscribe_token)
-except Exception as e:
-    st.error(f"An error occurred: {e}")
+except Exception:
+    logger.exception("Error during unsubscribe")
+    st.error("Something went wrong. Please try again later.")
     st.stop()
 
 if success:
