@@ -36,3 +36,12 @@ repos:
       - id: mypy
         additional_dependencies:
           - pydantic>=2.5.0
+
+  - repo: local
+    hooks:
+      - id: test-suite
+        name: Run tests
+        entry: pytest tests/ -x -q --tb=short
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
