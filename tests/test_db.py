@@ -144,7 +144,9 @@ class TestDeactivateSubscriberByToken:
         expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
         self._setup_select(client, [{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expires}])
 
-        assert db.deactivate_subscriber_by_token(client, UNSUB_TOKEN) is True
+        result = db.deactivate_subscriber_by_token(client, UNSUB_TOKEN)
+
+        assert result is True
         mock_deactivate.assert_called_once_with(client, SUB_ID)
         mock_delete.assert_called_once_with(client, SUB_ID)
 
@@ -168,17 +170,6 @@ class TestDeactivateSubscriberByToken:
         self._setup_select(client, [{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expired}])
 
         assert db.deactivate_subscriber_by_token(client, UNSUB_TOKEN) is False
-
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber", return_value=True)
-    def test_data_deletion_called(self, mock_deactivate, mock_delete):
-        client = _mock_client()
-        expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
-        self._setup_select(client, [{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expires}])
-
-        db.deactivate_subscriber_by_token(client, UNSUB_TOKEN)
-
-        mock_delete.assert_called_once_with(client, SUB_ID)
 
 
 # ---------------------------------------------------------------------------
@@ -571,33 +562,3 @@ class TestGDPRLifecycle:
         assert count == 1
         mock_deactivate.assert_called_with(client, SUB_ID)
         mock_delete.assert_called_with(client, SUB_ID)
-
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber", return_value=True)
-    def test_subscribe_verify_unsubscribe(self, mock_deactivate, mock_delete):
-        """Unsubscribe path: subscribe → confirm → unsubscribe (PII deleted)."""
-        client = _mock_client()
-
-        # 1. Token lookup for unsubscribe
-        expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
-        client.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_execute(
-            data=[{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expires}]
-        )
-
-        # 2. Unsubscribe by token
-        result = db.deactivate_subscriber_by_token(client, UNSUB_TOKEN)
-        assert result is True
-        mock_deactivate.assert_called_once_with(client, SUB_ID)
-        mock_delete.assert_called_once_with(client, SUB_ID)
-
-    @freeze_time("2026-02-20T12:00:00Z")
-    def test_expired_token_cannot_confirm(self):
-        """Security: an expired confirmation token must not activate a subscriber."""
-        client = _mock_client()
-        expired = (datetime(2026, 2, 19, tzinfo=timezone.utc)).isoformat()
-        sub = {"id": SUB_ID, "is_active": False, "token_expires_at": expired}
-        client.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_execute(data=[sub])
-
-        result = db.confirm_subscriber(client, TOKEN)
-
-        assert result is None

@@ -1,20 +1,22 @@
 """Tests for stellenscout.emailer — HTML builder pure functions."""
 
+import pytest
+
 from stellenscout.emailer import _build_html, _build_job_row, _impressum_line
 
 
 class TestBuildJobRow:
-    def test_high_score_green_badge(self):
-        html = _build_job_row({"title": "Dev", "company": "Co", "score": 85, "url": "https://example.com"})
-        assert "#22c55e" in html  # green
-
-    def test_medium_score_yellow_badge(self):
-        html = _build_job_row({"title": "Dev", "company": "Co", "score": 75, "url": "https://example.com"})
-        assert "#eab308" in html  # yellow
-
-    def test_low_score_orange_badge(self):
-        html = _build_job_row({"title": "Dev", "company": "Co", "score": 50, "url": "https://example.com"})
-        assert "#f97316" in html  # orange
+    @pytest.mark.parametrize(
+        ("score", "color"),
+        [
+            (85, "#22c55e"),
+            (75, "#eab308"),
+            (50, "#f97316"),
+        ],
+    )
+    def test_score_badge_color_thresholds(self, score: int, color: str):
+        html = _build_job_row({"title": "Dev", "company": "Co", "score": score, "url": "https://example.com"})
+        assert color in html
 
     def test_contains_title_and_company(self):
         html = _build_job_row({"title": "Engineer", "company": "ACME", "score": 90, "url": "#"})
