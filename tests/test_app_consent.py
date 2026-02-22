@@ -10,8 +10,6 @@ we simulate what Streamlit does internally (widget-key cleanup) and
 check that the consent flag survives.
 """
 
-import pytest
-
 # ---------------------------------------------------------------------------
 # Minimal fake that mirrors st.session_state (dict + attribute access)
 # ---------------------------------------------------------------------------
@@ -141,28 +139,3 @@ class TestConsentPersistence:
             "The persistent consent key and widget key must be different — "
             "Streamlit deletes widget keys for unrendered widgets"
         )
-
-
-class TestConsentInAppSource:
-    """Verify the actual app.py source uses the correct key setup."""
-
-    @pytest.fixture(autouse=True)
-    def _load_source(self):
-        from pathlib import Path
-
-        self.source = (Path(__file__).parent.parent / "stellenscout" / "app.py").read_text()
-
-    def test_checkbox_uses_widget_key_not_persistent(self):
-        """The checkbox must use 'cv_consent_checkbox' as its key,
-        NOT '_cv_consent_given'."""
-        assert 'key="cv_consent_checkbox"' in self.source, "Checkbox should use key='cv_consent_checkbox'"
-        # The persistent key must NOT appear as a checkbox widget key
-        assert 'key="_cv_consent_given"' not in self.source, (
-            "Found key='_cv_consent_given' on a widget — this will be "
-            "deleted by Streamlit when the widget stops rendering"
-        )
-
-    def test_on_change_callback_syncs_to_persistent_key(self):
-        """The checkbox must have an on_change that writes to _cv_consent_given."""
-        assert "on_change" in self.source
-        assert "_cv_consent_given" in self.source

@@ -163,14 +163,6 @@ class TestCandidateProfile:
         restored = CandidateProfile(**dumped)
         assert restored == sample_profile
 
-    def test_round_trip_with_history(self, sample_profile):
-        """Ensure nested WorkEntry/EducationEntry survive round-trip."""
-        dumped = sample_profile.model_dump()
-        restored = CandidateProfile(**dumped)
-        assert len(restored.work_history) == 3
-        assert restored.work_history[0].company == "FinPayments GmbH"
-        assert restored.education_history[0].institution == "TU Munich"
-
 
 class TestJobEvaluation:
     def test_valid_boundaries(self):

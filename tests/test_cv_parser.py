@@ -8,17 +8,17 @@ from stellenscout.cv_parser import _clean_text, extract_text
 
 
 class TestCleanText:
-    def test_strips_leading_trailing(self):
-        assert _clean_text("  hello  ") == "hello"
-
-    def test_collapses_triple_newlines(self):
-        assert "\n\n\n" not in _clean_text("a\n\n\n\nb")
-
-    def test_preserves_double_newlines(self):
-        assert "a\n\nb" == _clean_text("a\n\nb")
-
-    def test_strips_line_whitespace(self):
-        assert _clean_text("  line one  \n  line two  ") == "line one\nline two"
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("  hello  ", "hello"),
+            ("a\n\n\nb", "a\n\nb"),
+            ("a\n\n\n\nb", "a\n\nb"),
+            ("  line one  \n  line two  ", "line one\nline two"),
+        ],
+    )
+    def test_clean_text_normalization(self, raw: str, expected: str):
+        assert _clean_text(raw) == expected
 
 
 class TestExtractText:
