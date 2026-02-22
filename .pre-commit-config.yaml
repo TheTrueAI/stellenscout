@@ -42,6 +42,8 @@ repos:
       - id: test-suite
         name: Run tests
         entry: pytest tests/ -x -q --tb=short
-        language: system
+        language: python
+        additional_dependencies:
+          - pytest
         pass_filenames: false
         stages: [pre-push]
