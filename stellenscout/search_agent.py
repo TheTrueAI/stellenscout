@@ -5,6 +5,7 @@ import re
 from collections.abc import Callable
 
 from google import genai
+from pydantic import ValidationError
 from serpapi import GoogleSearch
 
 from .llm import call_gemini, parse_json
@@ -276,12 +277,39 @@ def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
         Structured candidate profile
     """
     prompt = f"{PROFILER_SYSTEM_PROMPT}\n\nExtract the profile from this CV:\n\n{cv_text}"
+    recovery_suffix = """
 
-    content = call_gemini(client, prompt, temperature=0.3, max_tokens=8192)
-    data = parse_json(content)
-    if not isinstance(data, dict):
-        raise ValueError("Expected a JSON object for profile")
-    return CandidateProfile(**data)
+IMPORTANT OUTPUT RULES:
+- Return ONLY valid JSON (no markdown, no prose).
+- Include ALL required top-level fields exactly once.
+- Keep text concise to avoid truncation:
+  - summary: 2-3 short sentences
+  - each work_history.description: one short sentence (<= 25 words)
+"""
+
+    last_error: Exception | None = None
+
+    for attempt in range(3):
+        content = call_gemini(client, prompt, temperature=0.3, max_tokens=8192)
+
+        try:
+            data = parse_json(content)
+            if not isinstance(data, dict):
+                raise ValueError("Expected a JSON object for profile")
+            return CandidateProfile(**data)
+        except (ValueError, ValidationError, TypeError) as exc:
+            last_error = exc
+            if attempt == 2:
+                break
+            prompt = (
+                f"{PROFILER_SYSTEM_PROMPT}\n\n"
+                "Your previous response was invalid or incomplete JSON. "
+                "Re-generate the FULL profile from this CV as one valid JSON object.\n\n"
+                f"{cv_text}"
+                f"{recovery_suffix}"
+            )
+
+    raise ValueError(f"Failed to generate a valid candidate profile JSON: {last_error}")
 
 
 def generate_search_queries(
@@ -311,10 +339,20 @@ def generate_search_queries(
 
     prompt = f"{HEADHUNTER_SYSTEM_PROMPT}\n\nGenerate exactly {num_queries} queries.\n\n{profile_text}"
 
-    content = call_gemini(client, prompt, temperature=0.5, max_tokens=8192)
-    queries = parse_json(content)
-    if isinstance(queries, list):
-        return queries[:num_queries]
+    retry_prompt = (
+        f"{prompt}\n\nIMPORTANT: Return ONLY a valid JSON array of strings with exactly {num_queries} queries."
+    )
+
+    for attempt in range(2):
+        content = call_gemini(client, prompt if attempt == 0 else retry_prompt, temperature=0.5, max_tokens=8192)
+        try:
+            queries = parse_json(content)
+        except ValueError:
+            continue
+
+        if isinstance(queries, list):
+            return queries[:num_queries]
+
     return []
 
 
