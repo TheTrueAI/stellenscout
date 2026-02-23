@@ -261,9 +261,7 @@ class TestLlmJsonRecovery:
         assert mock_call_gemini.call_count == 3
 
     @patch("stellenscout.search_agent.call_gemini")
-    def test_generate_search_queries_returns_empty_list_after_all_retries_fail(
-        self, mock_call_gemini: MagicMock
-    ):
+    def test_generate_search_queries_returns_empty_list_after_all_retries_fail(self, mock_call_gemini: MagicMock):
         profile = CandidateProfile(
             skills=["Python"],
             experience_level="Mid",
