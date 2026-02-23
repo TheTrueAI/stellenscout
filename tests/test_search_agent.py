@@ -1,5 +1,6 @@
 """Tests for stellenscout.search_agent — pure helper functions and search_all_queries orchestration."""
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -220,7 +221,7 @@ class TestLlmJsonRecovery:
         }
         mock_call_gemini.side_effect = [
             '{"skills": ["Python"',
-            str(valid_profile).replace("'", '"'),
+            json.dumps(valid_profile),
         ]
 
         result = profile_candidate(MagicMock(), "Sample CV")
@@ -248,4 +249,102 @@ class TestLlmJsonRecovery:
         queries = generate_search_queries(MagicMock(), profile, location="Berlin, Germany", num_queries=2)
 
         assert queries == ["python developer berlin", "backend berlin"]
+        assert mock_call_gemini.call_count == 2
+
+    @patch("stellenscout.search_agent.call_gemini")
+    def test_profile_candidate_raises_after_all_retries_exhausted(self, mock_call_gemini: MagicMock):
+        mock_call_gemini.side_effect = ["not json", "still not json", "also not json"]
+
+        with pytest.raises(ValueError, match="Failed to generate a valid candidate profile JSON"):
+            profile_candidate(MagicMock(), "Sample CV")
+
+        assert mock_call_gemini.call_count == 3
+
+    @patch("stellenscout.search_agent.call_gemini")
+    def test_generate_search_queries_returns_empty_list_after_all_retries_fail(
+        self, mock_call_gemini: MagicMock
+    ):
+        profile = CandidateProfile(
+            skills=["Python"],
+            experience_level="Mid",
+            years_of_experience=3,
+            roles=["Backend Developer", "Python Developer", "Software Engineer", "Entwickler", "Engineer"],
+            languages=["English C1"],
+            domain_expertise=["SaaS"],
+            certifications=[],
+            education=[],
+            summary="",
+            work_history=[],
+            education_history=[],
+        )
+        mock_call_gemini.side_effect = ["not json", "still not json"]
+
+        queries = generate_search_queries(MagicMock(), profile, location="Berlin, Germany", num_queries=2)
+
+        assert queries == []
+        assert mock_call_gemini.call_count == 2
+
+    @patch("stellenscout.search_agent.call_gemini")
+    def test_profile_candidate_retries_after_validation_error(self, mock_call_gemini: MagicMock):
+        base_profile = {
+            "skills": ["Python", "SQL"],
+            "experience_level": "Mid",
+            "years_of_experience": 4,
+            "roles": [
+                "Python Developer",
+                "Backend Developer",
+                "Software Engineer",
+                "Entwickler",
+                "Data Engineer",
+            ],
+            "languages": ["English C1"],
+            "domain_expertise": ["SaaS"],
+            "certifications": [],
+            "education": ["BSc Computer Science"],
+            "summary": "Backend-focused engineer with API and data experience.",
+            "work_history": [],
+            "education_history": [],
+        }
+        invalid_profile = dict(base_profile)
+        invalid_profile["experience_level"] = "UltraSenior"
+
+        mock_call_gemini.side_effect = [
+            json.dumps(invalid_profile),
+            json.dumps(base_profile),
+        ]
+
+        result = profile_candidate(MagicMock(), "Sample CV")
+
+        assert result.experience_level == "Mid"
+        assert mock_call_gemini.call_count == 2
+
+    @patch("stellenscout.search_agent.call_gemini")
+    def test_profile_candidate_retries_when_json_is_not_dict(self, mock_call_gemini: MagicMock):
+        valid_profile = {
+            "skills": ["Python", "SQL"],
+            "experience_level": "Mid",
+            "years_of_experience": 4,
+            "roles": [
+                "Python Developer",
+                "Backend Developer",
+                "Software Engineer",
+                "Entwickler",
+                "Data Engineer",
+            ],
+            "languages": ["English C1"],
+            "domain_expertise": ["SaaS"],
+            "certifications": [],
+            "education": ["BSc Computer Science"],
+            "summary": "Backend-focused engineer with API and data experience.",
+            "work_history": [],
+            "education_history": [],
+        }
+        mock_call_gemini.side_effect = [
+            "[]",  # JSON array, not a dict -> raises ValueError("Expected a JSON object for profile")
+            json.dumps(valid_profile),
+        ]
+
+        result = profile_candidate(MagicMock(), "Sample CV")
+
+        assert result.experience_level == "Mid"
         assert mock_call_gemini.call_count == 2
