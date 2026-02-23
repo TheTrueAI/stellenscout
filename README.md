@@ -3,7 +3,7 @@
 AI-powered job matching for the European market. Upload your CV, and the app uses Google Gemini to analyze your profile, searches for relevant jobs via Google Jobs, and scores each listing against your skills and experience.
 
 ---
-<img width="2522" height="1312" alt="image" src="https://github.com/user-attachments/assets/e450bfb6-6aa0-4c24-aa53-be8695146b03" />
+![Screenshot of the StellenScout web interface showing AI-powered job matching results](https://github.com/user-attachments/assets/e450bfb6-6aa0-4c24-aa53-be8695146b03)
 
 ---
 ## Features
