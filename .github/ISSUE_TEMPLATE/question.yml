@@ -1,0 +1,29 @@
+name: Question
+description: Ask a question about setup, usage, or architecture
+title: "[Question] "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? Please check the [README](https://github.com/TheTrueAI/stellenscout#readme) and [AGENTS.md](https://github.com/TheTrueAI/stellenscout/blob/main/AGENTS.md) first.
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Question
+      description: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: What I've Tried
+      description: What have you already looked at or tried?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context
+      description: Any relevant details about your setup or use case.

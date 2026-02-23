@@ -30,9 +30,9 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 
 ### 1.1 — Open Source the Repo
 - [x] **Add LICENSE file** (AGPL-3.0) to repo root
-- [ ] **Write README.md** — hero screenshot, what it does, self-hosting instructions (`GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_*`, `RESEND_*`), link to live demo
-- [ ] **Write CONTRIBUTING.md** — how to set up local dev, PR process, code style
-- [ ] **Create GitHub issue templates** — bug report, feature request, question
+- [x] **Write README.md** — hero screenshot, what it does, self-hosting instructions (`GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_*`, `RESEND_*`), link to live demo
+- [x] **Write CONTRIBUTING.md** — how to set up local dev, PR process, code style
+- [x] **Create GitHub issue templates** — bug report, feature request, question
 - [ ] **Flip repo to public**
 
 ### 1.2 — Deploy Daily Digest
