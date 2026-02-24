@@ -156,7 +156,7 @@ stellenscout/
     privacy.py        # Privacy policy
 daily_task.py         # Daily digest cron job (GitHub Actions)
 setup_db.py           # Database schema checker / migration helper
-tests/                # 146 tests across 9 test files (all mocked)
+tests/                # tests (all mocked)
 ```
 
 ## Privacy & Data Handling
