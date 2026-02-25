@@ -75,8 +75,8 @@ class TestJobsCache:
     @freeze_time("2026-02-20")
     def test_round_trip_same_day(self, cache: ResultCache):
         jobs = [JobListing(title="Dev", company_name="Corp", location="Berlin")]
-        cache.save_jobs(jobs)
-        loaded = cache.load_jobs()
+        cache.save_jobs(jobs, "Berlin")
+        loaded = cache.load_jobs("Berlin")
         assert loaded is not None
         assert len(loaded) == 1
         assert loaded[0].title == "Dev"
@@ -84,23 +84,48 @@ class TestJobsCache:
     @freeze_time("2026-02-20")
     def test_miss_next_day(self, cache: ResultCache):
         jobs = [JobListing(title="Dev", company_name="Corp", location="Berlin")]
-        cache.save_jobs(jobs)
+        cache.save_jobs(jobs, "Berlin")
 
         with freeze_time("2026-02-21"):
-            assert cache.load_jobs() is None
+            assert cache.load_jobs("Berlin") is None
 
     @freeze_time("2026-02-20")
     def test_merge_dedup(self, cache: ResultCache):
-        cache.save_jobs([JobListing(title="Dev", company_name="Corp", location="Berlin")])
+        cache.save_jobs([JobListing(title="Dev", company_name="Corp", location="Berlin")], "Berlin")
         cache.save_jobs(
             [
                 JobListing(title="Dev", company_name="Corp", location="Berlin"),  # duplicate
                 JobListing(title="PM", company_name="Corp", location="Berlin"),  # new
-            ]
+            ],
+            "Berlin",
         )
-        loaded = cache.load_jobs()
+        loaded = cache.load_jobs("Berlin")
         assert loaded is not None
         assert len(loaded) == 2
+
+    @freeze_time("2026-02-20")
+    def test_miss_on_different_location(self, cache: ResultCache):
+        jobs = [JobListing(title="Dev", company_name="Corp", location="Berlin")]
+        cache.save_jobs(jobs, "Berlin")
+        assert cache.load_jobs("Munich") is None
+
+    @freeze_time("2026-02-20")
+    def test_location_change_resets_cache(self, cache: ResultCache):
+        cache.save_jobs([JobListing(title="Dev", company_name="Corp", location="Berlin")], "Berlin")
+        cache.save_jobs([JobListing(title="PM", company_name="Corp", location="Munich")], "Munich")
+        loaded = cache.load_jobs("Munich")
+        assert loaded is not None
+        assert len(loaded) == 1
+        assert loaded[0].title == "PM"
+
+    @freeze_time("2026-02-20")
+    def test_backward_compat_no_location_key(self, cache: ResultCache):
+        """Old cache files without a 'location' key should be treated as location=''."""
+        jobs = [JobListing(title="Dev", company_name="Corp", location="Berlin")]
+        cache.save_jobs(jobs)  # location defaults to ""
+        loaded = cache.load_jobs()  # location defaults to ""
+        assert loaded is not None
+        assert len(loaded) == 1
 
 
 class TestEvaluationsCache:

@@ -22,23 +22,42 @@ This document defines the persona, context, and instruction sets for the AI agen
 > Pay special attention to DATES and DURATIONS for each role and degree.
 >
 > Return a JSON object with:
-> - `skills`: List of ALL hard skills, tools, frameworks, methodologies, and technical competencies mentioned. Aim for 15-20 items.
+> - `skills`: List of ALL hard skills, tools, frameworks, methodologies, and technical competencies mentioned. Include specific tools (e.g., "SAP", "Power BI"), standards (e.g., "ISO 14064", "GHG Protocol"), and methods. Aim for 15-20 items.
 > - `experience_level`: One of "Junior" (<2 years), "Mid" (2-5 years), "Senior" (5-10 years), "Lead" (10+ years), "CTO".
 > - `years_of_experience`: (int) Total years of professional experience. Calculate from work history dates.
-> - `roles`: List of 5 job titles the candidate is suited for, ordered most to least specific. Include both English and local-language titles.
-> - `languages`: List of spoken languages with proficiency level (e.g., "German B2", "English Native").
+> - `roles`: List of 5 job titles the candidate is suited for, ordered from most to least specific. Include both English and local-language titles where relevant.
+> - `languages`: List of spoken languages with proficiency level (e.g., "German B2", "English Native", "French C1").
 > - `domain_expertise`: List of all industries and domains the candidate has worked in.
-> - `certifications`: List of professional certifications, accreditations, or licenses. Empty list if none.
-> - `education`: List of degrees with field of study and university name if mentioned.
+> - `certifications`: List of professional certifications, accreditations, or licenses (e.g., "PMP", "AWS Solutions Architect"). Empty list if none.
+> - `education`: List of degrees with field of study (e.g., "MSc Environmental Engineering", "BSc Computer Science"). Include the university name if mentioned.
 > - `summary`: A 2-3 sentence professional summary describing the candidate's core strengths and career trajectory.
-> - `work_history`: Array of work-experience objects, ordered MOST RECENT FIRST. Each has: `title`, `company`, `start_date`, `end_date` (null if current), `duration_months`, `skills_used` (list), `description`.
-> - `education_history`: Array of education objects. Each has: `degree`, `institution`, `start_date`, `end_date` (null if ongoing), `status` ("completed", "in_progress", or "dropped").
+> - `work_history`: Array of work-experience objects, ordered MOST RECENT FIRST. Each object has:
+>   - `title`: (string) Job title held.
+>   - `company`: (string) Employer name.
+>   - `start_date`: (string) e.g. "2020-03" or "2020". Use the best precision available.
+>   - `end_date`: (string or null) null means this is the CURRENT role.
+>   - `duration_months`: (int or null) Estimated duration in months. Calculate from dates; if dates are vague, estimate.
+>   - `skills_used`: (list of strings) Key skills, tools, and technologies used in THIS specific role.
+>   - `description`: (string) One-sentence summary of responsibilities/achievements.
+> - `education_history`: Array of education objects. Each object has:
+>   - `degree`: (string) e.g. "MSc Computer Science".
+>   - `institution`: (string) University or school name.
+>   - `start_date`: (string or null) Start date if available.
+>   - `end_date`: (string or null) Graduation date, or null if still studying.
+>   - `status`: One of "completed", "in_progress", "dropped". If the CV says "expected 2026" or has no graduation date and appears current, use "in_progress".
 >
-> Be precise about dates. If the CV says "2020 – present", set end_date to null. If it says "2018 – 2020", estimate duration_months. For education, mark degrees without a graduation date or with "expected" as "in_progress".
+> Be precise about dates:
+> - If the CV says "2020 – present", set end_date to null.
+> - If it says "2018 – 2020", estimate duration_months (e.g. 24).
+> - For education, mark degrees without a graduation date or with "expected" as "in_progress".
+>
+> Return ONLY valid JSON, no markdown or explanation.
 
 **Generation Config:**
 - Temperature: 0.3
 - Max tokens: 8192 (high to accommodate gemini thinking tokens)
+
+**Retry / recovery:** `profile_candidate()` attempts up to 3 calls. If the first response is invalid or incomplete JSON, a recovery suffix is appended to the prompt asking the LLM to re-generate the full profile as one valid JSON object.
 
 ---
 
@@ -49,21 +68,34 @@ This document defines the persona, context, and instruction sets for the AI agen
 **Output:** A JSON array of 20 search query strings optimized for Google Jobs.
 
 **System Prompt:**
-> You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings in Europe.
+> You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings.
 >
 > IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
 >
-> CRITICAL: Always use LOCAL city names, not English ones. For example use "München" not "Munich", "Köln" not "Cologne", "Wien" not "Vienna", "Zürich" not "Zurich", "Praha" not "Prague".
+> CRITICAL: Always use LOCAL names, not English ones. For example use "München" not "Munich", "Köln" not "Cologne", "Wien" not "Vienna", "Zürich" not "Zurich", "Praha" not "Prague", "Deutschland" not "Germany".
 >
-> ORDER queries from MOST SPECIFIC to MOST GENERAL — this is critical:
-> 1. Queries 1-5: Exact role titles + local city name
-> 2. Queries 6-10: Broader role synonyms + city
-> 3. Queries 11-15: Industry/domain keywords without city or with "remote"
-> 4. Queries 16-20: Very broad industry terms
+> **Adapt your strategy to the SCOPE of the Target Location:**
 >
-> Strategy for MAXIMUM coverage:
-> - Include BOTH English and local-language job titles
-> - Use different synonyms for the same role
+> A) If the location is a CITY (e.g. "München", "Amsterdam"):
+>    1. Queries 1-5: Exact role titles + local city name
+>    2. Queries 6-10: Broader role synonyms + city
+>    3. Queries 11-15: Industry/domain keywords without city or with "remote"
+>    4. Queries 16-20: Very broad industry terms
+>
+> B) If the location is a COUNTRY (e.g. "Germany", "Netherlands"):
+>    1. Queries 1-5: Exact role titles + local country name (e.g. "Data Engineer Deutschland")
+>    2. Queries 6-10: Same roles + major cities in that country (e.g. "Backend Developer München", "Backend Developer Berlin")
+>    3. Queries 11-15: Broader role synonyms + country or "remote"
+>    4. Queries 16-20: Very broad industry terms
+>
+> C) If the location is "remote", "worldwide", or similar:
+>    1. Queries 1-10: Exact role titles + "remote"
+>    2. Queries 11-15: Broader role synonyms + "remote"
+>    3. Queries 16-20: Very broad industry terms without any location
+>
+> Additional strategy:
+> - Include BOTH English and local-language job titles for the target country
+> - Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
 
 **Generation Config:**
 - Temperature: 0.5
@@ -72,9 +104,13 @@ This document defines the persona, context, and instruction sets for the AI agen
 **Post-processing:**
 - Queries missing a location keyword (words from the user's location string, or "remote") get the target location auto-appended before searching.
 - English city names are automatically translated to local names (e.g., Munich → München, Vienna → Wien, Cologne → Köln) via a regex-based replacement in `search_agent.py:_localise_query()`.
+- English country names are also translated to local names (e.g., Germany → Deutschland, Austria → Österreich, Switzerland → Schweiz) via `_COUNTRY_LOCALISE` and `_COUNTRY_LOCALISE_PATTERN`.
+- Both city and country localisation are applied to the query itself *and* to the auto-appended location suffix.
 
 **Search behaviour:**
-- Google `gl=` country code is inferred from the location string via `_infer_gl()` (maps ~60 country/city names to 2-letter codes, defaults to `"de"`).
+- Google `gl=` country code is inferred from the location string via `_infer_gl()` (maps ~60 country/city names to 2-letter codes, defaults to `"de"` for non-remote locations).
+- For purely remote/global searches (location contains only tokens like "remote", "worldwide", "global", "anywhere", "weltweit"), `_is_remote_only()` returns `True` and `_infer_gl()` returns `None` — the `gl` param is omitted from SerpApi so results aren't country-biased.
+- SerpApi's `location` parameter is passed for non-remote searches (the raw user-supplied string, e.g. "Munich, Germany") for geographic filtering. Omitted for remote searches.
 - Searches stop early once 50 unique jobs have been collected, saving SerpAPI quota.
 - Listings from questionable job portals (BeBee, Jooble, Adzuna, etc.) are filtered out at parse time. Jobs with no remaining apply links after filtering are discarded entirely.
 
@@ -439,15 +475,15 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 
 | File | Module under test | What's covered |
 |---|---|---|
-| `test_llm.py` | `llm.py` | `parse_json()` (8 cases: raw, fenced, embedded, nested, errors) + `call_gemini()` retry logic (4 cases: success, ServerError retry, 429 retry, non-429 immediate raise) |
-| `test_evaluator_agent.py` | `evaluator_agent.py` | `evaluate_job()` (4 cases: happy path, API error fallback, parse error fallback, non-dict fallback) + `evaluate_all_jobs()` (3 cases: sorted output, progress callback, empty list) + `generate_summary()` (2 cases: score distribution in prompt, missing skills in prompt) |
-| `test_search_agent.py` | `search_agent.py` | `_infer_gl()` (10 cases) + `_localise_query()` (6 cases) + `_parse_job_results()` (5 cases) + `search_all_queries()` (3 cases: location auto-append with localisation, no double-append, early stopping) |
-| `test_cache.py` | `cache.py` | All cache operations: profile, queries, jobs (merge/dedup), evaluations, unevaluated job filtering |
-| `test_cv_parser.py` | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
-| `test_models.py` | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
-| `test_db.py` | `db.py` | Full GDPR lifecycle: add/confirm/expire/purge subscribers, deactivate by token, data deletion. All DB functions mocked at Supabase client level |
-| `test_emailer.py` | `emailer.py` | HTML generation: job row badges, job count, unsubscribe link, impressum line |
-| `test_app_consent.py` | `app.py` | GDPR consent checkbox: session state persistence, widget key separation, on_change sync |
+| `test_llm.py` (12 tests) | `llm.py` | `parse_json()` (8 cases: raw, fenced, embedded, nested, errors) + `call_gemini()` retry logic (4 cases: success, ServerError retry, 429 retry, non-429 immediate raise) |
+| `test_evaluator_agent.py` (8 tests) | `evaluator_agent.py` | `evaluate_job()` (4 cases: happy path, API error fallback, parse error fallback, non-dict fallback) + `evaluate_all_jobs()` (3 cases: sorted output, progress callback, empty list) + `generate_summary()` (2 cases: score distribution in prompt, missing skills in prompt) |
+| `test_search_agent.py` (32 tests) | `search_agent.py` | `_is_remote_only()` (remote tokens, non-remote) + `_infer_gl()` (known locations, unknown default, remote returns None, case insensitive) + `_localise_query()` (city names, country names, case insensitive, multiple cities) + `_parse_job_results()` (valid, blocked portals, mixed, empty, no-apply-links) + `search_all_queries()` (location auto-append with localisation, no double-append, early stopping) + `TestLlmJsonRecovery` (profile_candidate and generate_search_queries retry/recovery) |
+| `test_cache.py` (17 tests) | `cache.py` | All cache operations: profile, queries, jobs (merge/dedup), evaluations, unevaluated job filtering |
+| `test_cv_parser.py` (6 tests) | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
+| `test_models.py` (23 tests) | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
+| `test_db.py` (35 tests) | `db.py` | Full GDPR lifecycle: add/confirm/expire/purge subscribers, deactivate by token, data deletion, subscription context, job upsert/dedup, sent-log tracking. All DB functions mocked at Supabase client level |
+| `test_emailer.py` (7 tests) | `emailer.py` | HTML generation: job row badges, job count, unsubscribe link, impressum line |
+| `test_app_consent.py` (5 tests) | `app.py` | GDPR consent checkbox: session state persistence, widget key separation, on_change sync |
 
 ### Testing conventions
 - All external services (Gemini API, SerpAPI, Supabase) are mocked — no API keys needed to run tests
@@ -496,6 +532,9 @@ This section documents the development process and conventions for both human an
 ### Quick Reference (for AI agents)
 
 ```bash
+# Activate the virtual environment first — ALWAYS required:
+source .venv/bin/activate
+
 # Test:    pytest tests/ -x -q
 # Lint:    ruff check . && ruff format --check .
 # Types:   mypy .
@@ -505,6 +544,7 @@ This section documents the development process and conventions for both human an
 
 ### Conventions for AI agents
 
+- **Always activate the virtual environment** (`source .venv/bin/activate`) before running any command (`pytest`, `ruff`, `mypy`, `streamlit`, etc.). The project's dependencies are installed only in `.venv`.
 - Use `google-genai` package, NOT the deprecated `google.generativeai`
 - Gemini model: `gemini-3-flash-preview`
 - Pydantic models live in `stellenscout/models.py` — follow existing patterns
@@ -566,5 +606,5 @@ Already configured in `.pre-commit-config.yaml`:
 - Let the user upload multiple CVs (e.g., one for software engineering, one for data science) and route them to different job searches?
 - Let the user update their daily digest preferences (e.g., "only send me jobs with score > 80", "send me a weekly digest instead of daily")?
 - Integrate Stripe for paid newsletter subscriptions (Phase 2).
-- Write contributor guidelines (CONTRIBUTING.md) and issue templates for the public repo.
+- Write issue templates for the public repo.
 - The SerpAPI query and the job evaluation are currently separate steps. Can we combine them to save API calls? For example, can we ask Gemini to generate the search queries AND evaluate the jobs in one go? Or can we at least evaluate each job as we parse it, instead of collecting them all and then evaluating? This might increase speed.

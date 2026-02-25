@@ -101,12 +101,14 @@ class ResultCache:
     # 3. Jobs  (date-based, merge new into existing)
     # ------------------------------------------------------------------
 
-    def load_jobs(self) -> list[JobListing] | None:
-        """Return cached jobs if they were searched today, else None."""
+    def load_jobs(self, location: str = "") -> list[JobListing] | None:
+        """Return cached jobs if they were searched today for the same location."""
         data = self._load("jobs.json")
         if data is None:
             return None
         if data.get("last_search") != date.today().isoformat():
+            return None
+        if data.get("location", "") != location:
             return None
         jobs_dict = data.get("jobs", {})
         try:
@@ -114,10 +116,15 @@ class ResultCache:
         except Exception:
             return None
 
-    def save_jobs(self, jobs: list[JobListing]) -> None:
-        """Merge *jobs* into existing cache and stamp today's date."""
+    def save_jobs(self, jobs: list[JobListing], location: str = "") -> None:
+        """Merge *jobs* into existing cache and stamp today's date + location."""
         data = self._load("jobs.json") or {}
-        existing: dict[str, dict] = data.get("jobs", {})
+
+        # Reset if location changed (different search scope)
+        if data.get("location", "") != location:
+            existing: dict[str, dict] = {}
+        else:
+            existing = data.get("jobs", {})
 
         for job in jobs:
             key = f"{job.title}|{job.company_name}"
@@ -127,6 +134,7 @@ class ResultCache:
             "jobs.json",
             {
                 "last_search": date.today().isoformat(),
+                "location": location,
                 "jobs": existing,
             },
         )

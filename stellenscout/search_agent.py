@@ -142,12 +142,28 @@ _GL_CODES: dict[str, str] = {
 }
 
 
-def _infer_gl(location: str) -> str:
+# Tokens that signal a purely remote / worldwide search (no single country).
+_REMOTE_TOKENS = {"remote", "worldwide", "global", "anywhere", "weltweit"}
+
+
+def _is_remote_only(location: str) -> bool:
+    """Return True when the location string contains ONLY remote-like tokens."""
+    words = {re.sub(r"[^\w]", "", w).lower() for w in location.split() if w.strip()}
+    return bool(words) and words <= _REMOTE_TOKENS
+
+
+def _infer_gl(location: str) -> str | None:
     """Infer a Google gl= country code from a free-form location string.
 
-    Falls back to "de" (Germany) when no country can be determined,
-    since SerpApi defaults to "us" otherwise and returns 0 European results.
+    Returns *None* for purely remote/global searches so CallerCode can
+    decide whether to set ``gl`` at all (SerpApi defaults to "us").
+    Falls back to "de" when a location is given but no country can be
+    determined, since SerpApi defaults to "us" otherwise and returns
+    0 European results.
     """
+    if _is_remote_only(location):
+        return None
+
     loc_lower = location.lower()
     for name, code in _GL_CODES.items():
         if name in loc_lower:
@@ -193,16 +209,42 @@ _CITY_LOCALISE: dict[str, str] = {
     "gothenburg": "Göteborg",
 }
 
+# English country names → local names for search queries.
+_COUNTRY_LOCALISE: dict[str, str] = {
+    "germany": "Deutschland",
+    "austria": "Österreich",
+    "switzerland": "Schweiz",
+    "netherlands": "Niederlande",
+    "czech republic": "Česká republika",
+    "czechia": "Česko",
+    "poland": "Polska",
+    "sweden": "Sverige",
+    "norway": "Norge",
+    "denmark": "Danmark",
+    "finland": "Suomi",
+    "hungary": "Magyarország",
+    "romania": "România",
+    "greece": "Ελλάδα",
+}
+
 # Build a case-insensitive regex that matches any English city name as a whole word
 _LOCALISE_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in _CITY_LOCALISE) + r")\b",
     re.IGNORECASE,
 )
 
+# Same for country names (longer keys first so "czech republic" beats "czech")
+_COUNTRY_LOCALISE_PATTERN = re.compile(
+    r"\b(" + "|".join(re.escape(k) for k in sorted(_COUNTRY_LOCALISE, key=len, reverse=True)) + r")\b",
+    re.IGNORECASE,
+)
+
 
 def _localise_query(query: str) -> str:
-    """Replace English city names with their local equivalents in a query."""
-    return _LOCALISE_PATTERN.sub(lambda m: _CITY_LOCALISE[m.group(0).lower()], query)
+    """Replace English city and country names with their local equivalents."""
+    query = _LOCALISE_PATTERN.sub(lambda m: _CITY_LOCALISE[m.group(0).lower()], query)
+    query = _COUNTRY_LOCALISE_PATTERN.sub(lambda m: _COUNTRY_LOCALISE[m.group(0).lower()], query)
+    return query
 
 
 # System prompt for the Profiler agent
@@ -245,24 +287,36 @@ Be precise about dates:
 Return ONLY valid JSON, no markdown or explanation."""
 
 # System prompt for the Headhunter agent
-HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings in Europe.
+HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings.
 
 IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
 
-CRITICAL: Always use LOCAL city names, not English ones. For example use "München" not "Munich", "Köln" not "Cologne", "Wien" not "Vienna", "Zürich" not "Zurich", "Praha" not "Prague".
+CRITICAL: Always use LOCAL names, not English ones. For example use "München" not "Munich", "Köln" not "Cologne", "Wien" not "Vienna", "Zürich" not "Zurich", "Praha" not "Prague", "Deutschland" not "Germany".
 
-ORDER queries from MOST SPECIFIC to MOST GENERAL — this is critical:
-1. Queries 1-5: Exact role titles + local city name (e.g. "Carbon Accounting Manager München")
-2. Queries 6-10: Broader role synonyms + city (e.g. "Sustainability Consultant München")
-3. Queries 11-15: Industry/domain keywords without city or with "remote" (e.g. "ESG Analyst remote")
-4. Queries 16-20: Very broad industry terms (e.g. "Environmental Engineer", "Data Analyst")
+**Adapt your strategy to the SCOPE of the Target Location:**
+
+A) If the location is a CITY (e.g. "München", "Amsterdam"):
+   1. Queries 1-5: Exact role titles + local city name
+   2. Queries 6-10: Broader role synonyms + city
+   3. Queries 11-15: Industry/domain keywords without city or with "remote"
+   4. Queries 16-20: Very broad industry terms
+
+B) If the location is a COUNTRY (e.g. "Germany", "Netherlands"):
+   1. Queries 1-5: Exact role titles + local country name (e.g. "Data Engineer Deutschland")
+   2. Queries 6-10: Same roles + major cities in that country (e.g. "Backend Developer München", "Backend Developer Berlin")
+   3. Queries 11-15: Broader role synonyms + country or "remote"
+   4. Queries 16-20: Very broad industry terms
+
+C) If the location is "remote", "worldwide", or similar:
+   1. Queries 1-10: Exact role titles + "remote" (e.g. "Data Engineer remote")
+   2. Queries 11-15: Broader role synonyms + "remote"
+   3. Queries 16-20: Very broad industry terms without any location
 
 Additional strategy:
 - Include BOTH English and local-language job titles for the target country
 - Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
 
-Return ONLY a JSON array of 20 search query strings, no explanation.
-Example: ["Carbon Accounting Manager München", "Sustainability Manager München", "ESG Manager München", "Climate Analyst München", "Nachhaltigkeitsmanager München", "Sustainability Consultant München", "Environmental Manager München", "CSR Manager München", "Green Finance München", "Umweltberater München", "ESG Analyst remote", "Carbon Footprint Analyst", "Sustainability Analyst remote", "Climate Risk Analyst", "GHG Protocol Specialist", "Environmental Engineer", "Data Analyst Sustainability", "ESG Reporting", "Corporate Sustainability", "Environmental Consultant"]"""
+Return ONLY a JSON array of 20 search query strings, no explanation."""
 
 
 def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
@@ -397,14 +451,21 @@ def _parse_job_results(results: dict) -> list[JobListing]:
     return jobs
 
 
-def search_jobs(query: str, num_results: int = 10, gl: str = "de") -> list[JobListing]:
+def search_jobs(
+    query: str,
+    num_results: int = 10,
+    gl: str | None = "de",
+    location: str | None = None,
+) -> list[JobListing]:
     """
     Search for jobs using SerpApi Google Jobs engine with pagination.
 
     Args:
         query: Search query string.
         num_results: Maximum number of results to return.
-        gl: Google country code (e.g. "de", "fr").
+        gl: Google country code (e.g. "de", "fr"). *None* to omit.
+        location: SerpApi ``location`` parameter for geographic filtering
+            (e.g. "Germany", "Munich, Bavaria, Germany"). *None* to omit.
 
     Returns:
         List of job listings.
@@ -417,13 +478,16 @@ def search_jobs(query: str, num_results: int = 10, gl: str = "de") -> list[JobLi
     next_page_token = None
 
     while len(all_jobs) < num_results:
-        params = {
+        params: dict[str, str] = {
             "engine": "google_jobs",
             "q": query,
-            "gl": gl,
             "hl": "en",  # English results
             "api_key": api_key,
         }
+        if gl is not None:
+            params["gl"] = gl
+        if location is not None:
+            params["location"] = location
         if next_page_token:
             params["next_page_token"] = next_page_token
 
@@ -471,8 +535,9 @@ def search_all_queries(
     Returns:
         Deduplicated list of job listings.
     """
-    # Translate English city names to local names (e.g. Munich → München)
+    # Translate English city/country names to local names (e.g. Munich → München)
     local_location = _localise_query(location)
+    remote_search = _is_remote_only(location)
 
     # Build location keywords from BOTH original and localised forms
     _location_words = set()
@@ -483,8 +548,13 @@ def search_all_queries(
                 _location_words.add(cleaned)
     _location_words.add("remote")
 
-    # Infer Google country code for localisation
+    # Infer Google country code for localisation (None for remote-only)
     gl = _infer_gl(location)
+
+    # Determine SerpApi `location` param for geographic filtering.
+    # For remote searches we omit it; for everything else we pass the
+    # raw user-supplied string which SerpApi resolves to its geo DB.
+    serpapi_location: str | None = None if remote_search else location or None
 
     all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
 
@@ -494,10 +564,15 @@ def search_all_queries(
         has_location = any(kw in query_lower for kw in _location_words)
         search_query = query if has_location else f"{query} {local_location}"
 
-        # Translate any English city names in the query itself
+        # Translate any English city/country names in the query itself
         search_query = _localise_query(search_query)
 
-        jobs = search_jobs(search_query, num_results=jobs_per_query, gl=gl)
+        jobs = search_jobs(
+            search_query,
+            num_results=jobs_per_query,
+            gl=gl,
+            location=serpapi_location,
+        )
         for job in jobs:
             key = f"{job.title}|{job.company_name}"
             if key not in all_jobs:
