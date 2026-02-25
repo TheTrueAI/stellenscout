@@ -8,12 +8,29 @@ import pytest
 from stellenscout.models import ApplyOption, CandidateProfile, JobListing
 from stellenscout.search_agent import (
     _infer_gl,
+    _is_remote_only,
     _localise_query,
     _parse_job_results,
     generate_search_queries,
     profile_candidate,
     search_all_queries,
 )
+
+
+class TestIsRemoteOnly:
+    @pytest.mark.parametrize(
+        "location",
+        ["remote", "Remote", "REMOTE", "worldwide", "global", "anywhere", "weltweit"],
+    )
+    def test_remote_tokens(self, location: str):
+        assert _is_remote_only(location) is True
+
+    @pytest.mark.parametrize(
+        "location",
+        ["Munich, Germany", "remote Germany", "Berlin", "Germany", ""],
+    )
+    def test_non_remote(self, location: str):
+        assert _is_remote_only(location) is False
 
 
 class TestInferGl:
@@ -35,6 +52,12 @@ class TestInferGl:
 
     def test_unknown_defaults_to_de(self):
         assert _infer_gl("Narnia") == "de"
+
+    def test_remote_returns_none(self):
+        assert _infer_gl("remote") is None
+
+    def test_worldwide_returns_none(self):
+        assert _infer_gl("worldwide") is None
 
     def test_case_insensitive(self):
         assert _infer_gl("BERLIN") == "de"
@@ -60,6 +83,15 @@ class TestLocaliseQuery:
         result = _localise_query("Munich or Vienna")
         assert "München" in result
         assert "Wien" in result
+
+    def test_country_germany_to_deutschland(self):
+        assert _localise_query("Jobs in Germany") == "Jobs in Deutschland"
+
+    def test_country_austria_to_oesterreich(self):
+        assert _localise_query("Jobs Austria") == "Jobs Österreich"
+
+    def test_country_case_insensitive(self):
+        assert "Deutschland" in _localise_query("jobs GERMANY")
 
 
 class TestParseJobResults:
@@ -167,6 +199,9 @@ class TestSearchAllQueries:
         # The query should have "München" appended (localised) and then localised again (no-op)
         actual_query = mock_search.call_args[0][0]
         assert "München" in actual_query
+        # Should pass gl and location to search_jobs
+        assert mock_search.call_args[1]["gl"] == "de"
+        assert mock_search.call_args[1]["location"] == "Munich, Germany"
 
     @patch("stellenscout.search_agent.search_jobs")
     def test_does_not_double_append_location(self, mock_search: MagicMock):
@@ -181,6 +216,35 @@ class TestSearchAllQueries:
         # Query already contains "münchen" (location keyword) so location should NOT be appended
         actual_query = mock_search.call_args[0][0]
         assert actual_query.count("München") == 1
+
+    @patch("stellenscout.search_agent.search_jobs")
+    def test_remote_search_omits_gl_and_serpapi_location(self, mock_search: MagicMock):
+        mock_search.return_value = [self._make_job("Remote Dev")]
+
+        search_all_queries(
+            queries=["Python Developer remote"],
+            location="remote",
+            min_unique_jobs=0,
+        )
+
+        assert mock_search.call_args[1]["gl"] is None
+        assert mock_search.call_args[1]["location"] is None
+
+    @patch("stellenscout.search_agent.search_jobs")
+    def test_country_search_passes_location_param(self, mock_search: MagicMock):
+        mock_search.return_value = [self._make_job("Dev")]
+
+        search_all_queries(
+            queries=["Python Developer"],
+            location="Germany",
+            min_unique_jobs=0,
+        )
+
+        assert mock_search.call_args[1]["gl"] == "de"
+        assert mock_search.call_args[1]["location"] == "Germany"
+        # Query should have localised country name appended
+        actual_query = mock_search.call_args[0][0]
+        assert "Deutschland" in actual_query
 
     @patch("stellenscout.search_agent.search_jobs")
     def test_stops_early_when_min_unique_jobs_reached(self, mock_search: MagicMock):

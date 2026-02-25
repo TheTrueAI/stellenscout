@@ -535,6 +535,7 @@ with st.sidebar:
     st.caption(
         "Built with [Streamlit](https://streamlit.io) • "
         "Powered by Gemini & SerpApi  \n"
+        "[GitHub](https://github.com/TheTrueAI/stellenscout) · "
         "[Legal Notice / Impressum](/impressum) · [Privacy Policy](/privacy)"
     )
 
@@ -623,7 +624,7 @@ else:
                 location = st.text_input(
                     "Where do you want to work?",
                     max_chars=100,
-                    placeholder="e.g. Munich, Amsterdam, Paris...",
+                    placeholder="e.g. Munich, Germany, remote...",
                 )
                 run_button = st.form_submit_button(
                     "🚀 Find Jobs",
@@ -745,7 +746,7 @@ def _run_pipeline() -> None:
     # ---- Step 2: Search for jobs -----------------------------------------
     search_progress = st.progress(0, text="🌍 Scouting jobs...")
     with st.status("🌍 Scouting jobs...", expanded=False) as status:
-        cached_jobs = cache.load_jobs()
+        cached_jobs = cache.load_jobs(location)
         if cached_jobs is not None:
             jobs = cached_jobs
             search_progress.empty()
@@ -764,7 +765,7 @@ def _run_pipeline() -> None:
                 location=location,
                 on_progress=_search_progress,
             )
-            cache.save_jobs(jobs)
+            cache.save_jobs(jobs, location)
             search_progress.empty()
             status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
 
