@@ -51,13 +51,13 @@ def call_gemini(
         except ServerError as e:
             last_exception = e
             if attempt < MAX_RETRIES - 1:
-                delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
+                delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)  # noqa: S311
                 time.sleep(delay)
         except ClientError as e:
             if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
                 last_exception = e
                 if attempt < MAX_RETRIES - 1:
-                    delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)
+                    delay = BASE_DELAY * (2**attempt) + random.uniform(0, 1)  # noqa: S311
                     time.sleep(delay)
             else:
                 raise

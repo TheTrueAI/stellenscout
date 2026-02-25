@@ -269,7 +269,7 @@ if "cleanup_done" not in st.session_state:
         _db = _get_admin_db()
         purge_inactive_subscribers(_db, older_than_days=30)
     except Exception:
-        pass
+        logger.debug("Session cache cleanup skipped", exc_info=True)
     st.session_state.cleanup_done = True
 
 _MAX_CV_CHARS = 50_000
@@ -610,7 +610,7 @@ if not has_cv:
                         if _sj.get("url"):
                             st.link_button("View ↗", _sj["url"], use_container_width=True)
     except Exception:
-        pass  # Supabase not configured — silently skip
+        logger.debug("Recent jobs unavailable", exc_info=True)
 else:
     hero_uploaded_file = None
 
