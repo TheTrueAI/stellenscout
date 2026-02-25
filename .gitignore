@@ -46,3 +46,6 @@ output/
 
 # Streamlit secrets (contains API keys)
 .streamlit/secrets.toml
+
+# MCP config (contains project refs)
+.mcp.json
