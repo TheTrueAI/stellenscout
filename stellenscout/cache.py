@@ -2,10 +2,13 @@
 
 import hashlib
 import json
+import logging
 from datetime import date
 from pathlib import Path
 
 from .models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_CACHE_DIR = Path(".stellenscout_cache")
 
@@ -158,6 +161,7 @@ class ResultCache:
                     evaluation=JobEvaluation(**entry["evaluation"]),
                 )
             except Exception:
+                logger.debug("Skipping malformed cache entry %s", key, exc_info=True)
                 continue
         return result
 

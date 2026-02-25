@@ -29,5 +29,8 @@ jobs:
       - name: Type check (mypy)
         run: mypy stellenscout/ daily_task.py
 
+      - name: Dependency audit (pip-audit)
+        run: pip install pip-audit && pip-audit --strict --desc -r requirements.txt
+
       - name: Tests
         run: pytest -v --cov=stellenscout --cov-report=term
