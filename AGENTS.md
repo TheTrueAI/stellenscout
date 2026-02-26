@@ -317,7 +317,7 @@ Features:
 - API keys via `.streamlit/secrets.toml` or environment variables
 
 ### Streamlit Pages
-- `pages/verify.py` — Email verification endpoint (`/verify?token=...`)
+- `pages/verify.py` — Email verification endpoint (`/verify?token=...`); sends welcome email on confirmation
 - `pages/unsubscribe.py` — One-click unsubscribe endpoint (`/unsubscribe?token=...`)
 - `pages/impressum.py` — Legal notice (§ 5 DDG)
 - `pages/privacy.py` — Privacy policy
@@ -342,7 +342,8 @@ Supported formats:
 4. Jobs already displayed in the UI session are pre-seeded into `job_sent_logs` via `db.upsert_jobs()` + `db.log_sent_jobs()` so the first digest doesn't repeat them
 5. `emailer.send_verification_email()` sends a confirmation link via Resend
 6. User clicks the link → `pages/verify.py` calls `db.confirm_subscriber()` → sets `is_active=True`, then `db.set_subscriber_expiry()` sets `expires_at = now() + 30 days`
-7. If email already active, the form shows "already subscribed" (no re-send)
+7. `pages/verify.py` sends a best-effort welcome email via `emailer.send_welcome_email()` (fire-and-forget — failure doesn't affect confirmation)
+8. If email already active, the form shows "already subscribed" (no re-send)
 
 ### Auto-Expiry
 - The 30-day clock starts at **DOI confirmation**, not signup (prevents wasted days while email is unconfirmed)
@@ -381,9 +382,10 @@ Per-subscriber pipeline, designed to run in GitHub Actions (or any cron schedule
 Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`.
 
 ### Email Templates (`emailer.py`)
-- `send_daily_digest()` — HTML table of job matches with score badges and apply links
-- `send_verification_email()` — CTA button linking to the verify page
-- Both include an impressum footer line built from `IMPRESSUM_NAME`, `IMPRESSUM_ADDRESS`, `IMPRESSUM_EMAIL` env vars
+- `send_daily_digest(user_email, jobs, unsubscribe_url, target_location)` — card-style job listings with score pill badges, location pins, "View Job" CTA buttons, match summary stats (excellent/good counts), and target location in header
+- `send_welcome_email(email, target_location, subscription_days, privacy_url)` — sent after DOI confirmation; explains what to expect, subscription duration, and links to privacy policy
+- `send_verification_email(email, verify_url)` — CTA button linking to the verify page
+- All three include an impressum footer line built from `IMPRESSUM_NAME`, `IMPRESSUM_ADDRESS`, `IMPRESSUM_EMAIL` env vars
 
 ---
 
@@ -482,7 +484,7 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 | `test_cv_parser.py` (6 tests) | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
 | `test_models.py` (23 tests) | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
 | `test_db.py` (35 tests) | `db.py` | Full GDPR lifecycle: add/confirm/expire/purge subscribers, deactivate by token, data deletion, subscription context, job upsert/dedup, sent-log tracking. All DB functions mocked at Supabase client level |
-| `test_emailer.py` (7 tests) | `emailer.py` | HTML generation: job row badges, job count, unsubscribe link, impressum line |
+| `test_emailer.py` (22 tests) | `emailer.py` | HTML generation: job row badges/cards/location, job count, match stats, unsubscribe link, target location in header, impressum line, welcome email (location, days, privacy, impressum) |
 | `test_app_consent.py` (5 tests) | `app.py` | GDPR consent checkbox: session state persistence, widget key separation, on_change sync |
 
 ### Testing conventions

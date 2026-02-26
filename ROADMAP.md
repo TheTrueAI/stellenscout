@@ -37,22 +37,21 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 
 ### 1.2 — Deploy Daily Digest
 - [x] **Set up GitHub Actions cron job** for daily_task.py (e.g., `cron: '0 7 * * *'` UTC)
-- [ ] **Add secrets to GitHub Actions** — all required env vars from §10
-- [ ] **Test the full digest cycle** — subscribe, verify, receive digest, unsubscribe
+- [x] **Add secrets to GitHub Actions** — all required env vars from §10
+- [x] **Test the full digest cycle** — subscribe, verify, receive digest, unsubscribe
+- [x] **Create a welcome email after successful subscription** — explain what to expect, how to contact support, link to privacy policy, show some example matches
+- [x] **Add unsubscribe link to digest emails** — include unique tokenized URL to securely identify subscriber without exposing email
+- [x] **Make digest email prettier** — use HTML formatting, add Stellenscout logo, style job listings for better readability
 
 ### 1.3 — UX Quick Wins
 - [ ] **Personalize the UI** — greet user by first name extracted from CV profile
 - [ ] **Add "Edit Profile" step** — let user tweak skills/roles/preferences before searching (this is already in Open Issues)
-- [ ] **Add a "Preferences" text input** — free-form like *"I want remote fintech jobs, no big corporations"* → append to Headhunter prompt
+- [ ] **Add a "Preferences" text input** — free-form like *"I want remote fintech jobs, no big corporations"* → append to profile prompt
 - [ ] **Show job age warning** — if `posted_at` is >30 days, badge it as "possibly expired"
 - [ ] **Improve job cards** — show apply links more prominently, add company logos via Clearbit/Logo.dev
 - [ ] **Add digest preferences UI** — allow users to change `min_score` and cadence (daily/weekly) after subscription
-
-### 1.4 — Monitoring & Observability
-- [ ] **Add structured logging** — replace `print()` with `logging` module, include run IDs
-- [ ] **Track pipeline metrics** — jobs found per query, avg scores, API latency, cache hit rates
-- [ ] **Set up error alerting** — GitHub Actions failure notifications (email or Slack webhook)
-- [ ] **Add cost dashboard** — track daily SerpAPI + Gemini usage and estimated monthly spend
+- [ ] **Remove random jobs from homepage before CV is entered** — show a friendly welcome message instead of empty job cards
+- [ ] **Add filter/sort options for publishing date and score** — both in the digest email and on the homepage after search
 
 ---
 
