@@ -214,6 +214,7 @@ def main() -> int:
                 "company": ej.job.company_name,
                 "url": _job_url(ej),
                 "score": ej.evaluation.score,
+                "location": ej.job.location,
             }
             for ej in good_matches
         ]
@@ -233,7 +234,12 @@ def main() -> int:
 
         log.info("  sub=%s — sending %d matches (score >= %d)", sub_id, len(email_jobs), sub_min_score)
         try:
-            send_daily_digest(sub_email, email_jobs, unsubscribe_url=unsubscribe_url)
+            send_daily_digest(
+                sub_email,
+                email_jobs,
+                unsubscribe_url=unsubscribe_url,
+                target_location=sub.get("target_location", ""),
+            )
         except Exception:
             log.exception("  sub=%s — failed to send daily digest, continuing", sub_id)
 

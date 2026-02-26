@@ -8,7 +8,17 @@ import streamlit as st
 logger = logging.getLogger(__name__)
 
 # Inject secrets into env vars (same pattern as app.py)
-for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
+for key in (
+    "SUPABASE_URL",
+    "SUPABASE_KEY",
+    "SUPABASE_SERVICE_KEY",
+    "RESEND_API_KEY",
+    "RESEND_FROM",
+    "APP_URL",
+    "IMPRESSUM_NAME",
+    "IMPRESSUM_ADDRESS",
+    "IMPRESSUM_EMAIL",
+):
     if key not in os.environ:
         try:
             os.environ[key] = st.secrets[key]
@@ -78,5 +88,32 @@ if subscriber:
         f"for {SUBSCRIPTION_DAYS} days. You can unsubscribe at any time via the link in each email."
     )
     st.balloons()
+
+    # Best-effort welcome email — failure doesn't affect confirmation
+    try:
+        import secrets as _secrets
+        from datetime import timedelta as _td
+
+        from stellenscout.db import issue_unsubscribe_token
+        from stellenscout.emailer import send_welcome_email
+
+        _app_url = os.environ.get("APP_URL", "").rstrip("/")
+
+        _unsub_url = ""
+        if _app_url:
+            _unsub_token = _secrets.token_urlsafe(32)
+            _unsub_expires = (_dt.now(_tz.utc) + _td(days=SUBSCRIPTION_DAYS)).isoformat()
+            if issue_unsubscribe_token(db, subscriber["id"], token=_unsub_token, expires_at=_unsub_expires):
+                _unsub_url = f"{_app_url}/unsubscribe?token={_unsub_token}"
+
+        send_welcome_email(
+            email=subscriber["email"],
+            target_location=subscriber.get("target_location", ""),
+            subscription_days=SUBSCRIPTION_DAYS,
+            privacy_url=f"{_app_url}/privacy" if _app_url else "",
+            unsubscribe_url=_unsub_url,
+        )
+    except Exception:
+        logger.exception("Failed to send welcome email")
 else:
     st.error("This confirmation link is invalid or has expired. Please subscribe again.")
