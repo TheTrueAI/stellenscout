@@ -256,9 +256,10 @@ class TestSearchAllQueries:
             min_unique_jobs=1,
         )
 
-        # Should stop after first query yields 1 unique job
-        assert mock_search.call_count == 1
+        # Parallel dispatch: all futures may fire before early_stop takes effect
+        # (mocks return instantly). The guarantee is correct dedup + results.
         assert len(results) == 1
+        assert mock_search.call_count <= 3
 
 
 class TestLlmJsonRecovery:

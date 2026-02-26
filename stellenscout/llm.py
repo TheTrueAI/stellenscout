@@ -4,6 +4,7 @@ import json
 import os
 import random
 import re
+import threading
 import time
 
 from google import genai
@@ -15,6 +16,12 @@ MAX_RETRIES = 5
 BASE_DELAY = 3  # seconds
 
 MODEL = "gemini-3-flash-preview"
+
+# Concurrency limiter — prevents thundering-herd 429s when many threads
+# call Gemini simultaneously (e.g. parallel job evaluation).
+# Gemini allows ~1000 RPM; with ~3-5s latency per call, 30 concurrent
+# requests ≈ 360-600 RPM — well within limits.
+_gemini_semaphore = threading.Semaphore(30)
 
 
 def create_client() -> genai.Client:
@@ -39,14 +46,15 @@ def call_gemini(
 
     for attempt in range(MAX_RETRIES):
         try:
-            response = client.models.generate_content(
-                model=MODEL,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    temperature=temperature,
-                    max_output_tokens=max_tokens,
-                ),
-            )
+            with _gemini_semaphore:
+                response = client.models.generate_content(
+                    model=MODEL,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                        max_output_tokens=max_tokens,
+                    ),
+                )
             return response.text or ""
         except ServerError as e:
             last_exception = e

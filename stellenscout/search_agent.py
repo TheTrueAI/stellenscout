@@ -2,7 +2,9 @@
 
 import os
 import re
+import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from pydantic import ValidationError
@@ -515,6 +517,7 @@ def search_all_queries(
     location: str = "",
     min_unique_jobs: int = 50,
     on_progress: "None | Callable" = None,
+    on_jobs_found: "None | Callable[[list[JobListing]], None]" = None,
 ) -> list[JobListing]:
     """
     Search for jobs across multiple queries and deduplicate results.
@@ -529,8 +532,14 @@ def search_all_queries(
         jobs_per_query: Number of jobs to fetch per query.
         location: Target location to append to queries missing one.
         min_unique_jobs: Stop after collecting this many unique jobs (0 to disable).
-        on_progress: Optional callback(query_index, total_queries, unique_jobs_count)
-            invoked after each query completes.
+        on_progress: Optional callback(completed_count, total_queries, unique_jobs_count)
+            invoked after each query completes. Because queries run in
+            parallel, completed_count reflects finish order, not the
+            original query index.
+        on_jobs_found: Optional callback(new_unique_jobs) invoked with each batch
+            of newly discovered unique jobs as soon as a query completes.
+            Enables the caller to start processing (e.g. evaluating) jobs before
+            all searches finish.
 
     Returns:
         Deduplicated list of job listings.
@@ -557,31 +566,54 @@ def search_all_queries(
     serpapi_location: str | None = None if remote_search else location or None
 
     all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
+    lock = threading.Lock()
+    completed = 0
+    early_stop = threading.Event()
 
-    for qi, query in enumerate(queries, 1):
-        # If the query doesn't already mention a location, append one
+    # Prepare all search queries upfront (localisation, location append)
+    prepared_queries: list[str] = []
+    for query in queries:
         query_lower = query.lower()
         has_location = any(kw in query_lower for kw in _location_words)
         search_query = query if has_location else f"{query} {local_location}"
-
-        # Translate any English city/country names in the query itself
         search_query = _localise_query(search_query)
+        prepared_queries.append(search_query)
 
-        jobs = search_jobs(
+    def _search_one(search_query: str) -> list[JobListing]:
+        if early_stop.is_set():
+            return []
+        return search_jobs(
             search_query,
             num_results=jobs_per_query,
             gl=gl,
             location=serpapi_location,
         )
-        for job in jobs:
-            key = f"{job.title}|{job.company_name}"
-            if key not in all_jobs:
-                all_jobs[key] = job
 
-        if on_progress is not None:
-            on_progress(qi, len(queries), len(all_jobs))
-
-        if min_unique_jobs and len(all_jobs) >= min_unique_jobs:
-            break
+    with ThreadPoolExecutor(max_workers=min(5, max(1, len(prepared_queries)))) as executor:
+        futures = [executor.submit(_search_one, sq) for sq in prepared_queries]
+        for future in as_completed(futures):
+            jobs = future.result()
+            batch_new: list[JobListing] = []
+            with lock:
+                for job in jobs:
+                    key = f"{job.title}|{job.company_name}"
+                    if key not in all_jobs:
+                        all_jobs[key] = job
+                        batch_new.append(job)
+                completed += 1
+                progress_args = (completed, len(queries), len(all_jobs))
+                if min_unique_jobs and len(all_jobs) >= min_unique_jobs:
+                    early_stop.set()
+            # Callbacks outside the lock to avoid blocking other threads
+            if on_progress is not None:
+                on_progress(*progress_args)
+            if batch_new and on_jobs_found is not None:
+                on_jobs_found(batch_new)
+            # Cancel pending futures once we have enough unique jobs
+            if early_stop.is_set():
+                for f in futures:
+                    if f is not future and not f.done():
+                        f.cancel()
+                break
 
     return list(all_jobs.values())
