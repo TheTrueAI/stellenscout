@@ -33,13 +33,12 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 - [x] **Write README.md** — hero screenshot, what it does, self-hosting instructions (`GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_*`, `RESEND_*`), link to live demo
 - [x] **Write CONTRIBUTING.md** — how to set up local dev, PR process, code style
 - [x] **Create GitHub issue templates** — bug report, feature request, question
-- [ ] **Flip repo to public**
+- [x] **Flip repo to public**
 
 ### 1.2 — Deploy Daily Digest
 - [x] **Set up GitHub Actions cron job** for daily_task.py (e.g., `cron: '0 7 * * *'` UTC)
 - [ ] **Add secrets to GitHub Actions** — all required env vars from §10
 - [ ] **Test the full digest cycle** — subscribe, verify, receive digest, unsubscribe
-- [ ] **Monitor SerpAPI quota** — 100 searches/month on free tier; track usage per run
 
 ### 1.3 — UX Quick Wins
 - [ ] **Personalize the UI** — greet user by first name extracted from CV profile

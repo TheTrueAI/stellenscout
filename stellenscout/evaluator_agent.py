@@ -97,7 +97,7 @@ Evaluate this job match and return JSON."""
     prompt = f"{SCREENER_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     try:
-        content = call_gemini(client, prompt, temperature=0.2, max_tokens=8192)
+        content = call_gemini(client, prompt, temperature=0.2, max_tokens=4096)
     except (ServerError, ClientError):
         return JobEvaluation(score=50, reasoning="Could not evaluate (API error after retries)", missing_skills=[])
 
@@ -116,7 +116,7 @@ def evaluate_all_jobs(
     profile: CandidateProfile,
     jobs: list[JobListing],
     progress_callback=None,
-    max_workers: int = 10,
+    max_workers: int = 30,
 ) -> list[EvaluatedJob]:
     """
     Evaluate multiple jobs against the candidate profile in parallel.

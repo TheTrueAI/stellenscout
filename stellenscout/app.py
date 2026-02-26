@@ -7,6 +7,7 @@ import re
 import secrets
 import shutil
 import tempfile
+import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
@@ -46,7 +47,7 @@ from stellenscout.cv_parser import SUPPORTED_EXTENSIONS, extract_text  # noqa: E
 from stellenscout.db import SUBSCRIPTION_DAYS  # noqa: E402
 from stellenscout.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from stellenscout.llm import create_client  # noqa: E402
-from stellenscout.models import CandidateProfile, EvaluatedJob  # noqa: E402
+from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing  # noqa: E402
 from stellenscout.search_agent import (  # noqa: E402
     generate_search_queries,
     profile_candidate,
@@ -727,7 +728,9 @@ def _run_pipeline() -> None:
         return
 
     cache = _get_cache()
-    client = None  # lazy — only created when needed
+    # Eagerly create the Gemini client so it's ready before the pipeline starts —
+    # avoids lazy-init delay between query generation and job evaluation.
+    client = create_client() if _keys_ok() else None
 
     # ---- Step 1: Generate queries ----------------------------------------
     with st.status("✨ Crafting search queries...", expanded=False) as status:
@@ -743,76 +746,123 @@ def _run_pipeline() -> None:
             status.update(label="✅ Queries generated", state="complete")
     st.session_state.queries = queries
 
-    # ---- Step 2: Search for jobs -----------------------------------------
-    search_progress = st.progress(0, text="🌍 Scouting jobs...")
-    with st.status("🌍 Scouting jobs...", expanded=False) as status:
-        cached_jobs = cache.load_jobs(location)
-        if cached_jobs is not None:
-            jobs = cached_jobs
-            search_progress.empty()
-            status.update(label=f"✅ Found {len(jobs)} jobs (cached)", state="complete")
-        else:
+    # ---- Step 2 & 3: Search + evaluate in parallel ----------------------
+    # Jobs are submitted for evaluation as soon as each search query returns
+    # results, overlapping the two phases for faster end-to-end time.
+    cached_jobs = cache.load_jobs(location)
 
-            def _search_progress(qi: int, total: int, unique: int) -> None:
-                pct = qi / total
-                search_progress.progress(
-                    pct, text=f"🌍 Searching query {qi}/{total} — {unique} unique jobs found so far..."
-                )
-
-            jobs = search_all_queries(
-                queries,
-                jobs_per_query=jobs_per_query,
-                location=location,
-                on_progress=_search_progress,
-            )
-            cache.save_jobs(jobs, location)
-            search_progress.empty()
-            status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
-
-    if not jobs:
-        st.warning("No jobs found. Try adjusting your location or uploading a different CV.")
-        return
-
-    # ---- Step 3: Evaluate jobs -------------------------------------------
-    new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile)
-
-    if not new_jobs:
-        with st.status("✅ All evaluations loaded (cached)", state="complete"):
+    if cached_jobs is not None:
+        jobs = cached_jobs
+        with st.status(f"✅ Found {len(jobs)} jobs (cached)", state="complete"):
             pass
-        all_evals = cached_evals
+
+        if not jobs:
+            st.warning("No jobs found. Try adjusting your location or uploading a different CV.")
+            return
+
+        new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile)
+        if not new_jobs:
+            with st.status("✅ All evaluations loaded (cached)", state="complete"):
+                pass
+            all_evals = cached_evals
+        else:
+            if client is None:
+                client = create_client()
+            all_evals = dict(cached_evals)
+            progress_bar = st.progress(0, text="⭐ Rating each job for you...")
+            results_container = st.container()
+            with ThreadPoolExecutor(max_workers=30) as executor:
+                futures = {executor.submit(evaluate_job, client, profile, job): job for job in new_jobs}
+                for i, future in enumerate(as_completed(futures), 1):
+                    job = futures[future]
+                    evaluation = future.result()
+                    ej = EvaluatedJob(job=job, evaluation=evaluation)
+                    key = f"{ej.job.title}|{ej.job.company_name}"
+                    all_evals[key] = ej
+                    progress_bar.progress(
+                        i / len(new_jobs),
+                        text=f"⭐ Rating each job for you... ({i}/{len(new_jobs)})",
+                    )
+                    with results_container:
+                        _render_job_card(ej)
+            progress_bar.empty()
+            results_container.empty()
+            cache.save_evaluations(profile, all_evals)
     else:
+        # Fresh search: overlap searching and evaluating.
         if client is None:
             client = create_client()
 
-        all_evals = dict(cached_evals)
-        progress_bar = st.progress(0, text="⭐ Rating each job for you...")
-        results_slot = st.empty()
+        # Load any previously evaluated jobs so we skip re-evaluating them.
+        cached_evals = cache.load_evaluations(profile)
+        all_evals: dict[str, EvaluatedJob] = dict(cached_evals) if cached_evals else {}
+        eval_executor = ThreadPoolExecutor(max_workers=30)
+        try:
+            eval_futures: dict[Future, JobListing] = {}
+            eval_lock = threading.Lock()
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = {executor.submit(evaluate_job, client, profile, job): job for job in new_jobs}
-            for i, future in enumerate(as_completed(futures), 1):
-                job = futures[future]
-                evaluation = future.result()
-                ej = EvaluatedJob(job=job, evaluation=evaluation)
-                key = f"{ej.job.title}|{ej.job.company_name}"
-                all_evals[key] = ej
-                progress_bar.progress(
-                    i / len(new_jobs),
-                    text=f"⭐ Rating each job for you... ({i}/{len(new_jobs)})",
-                )
-                # Re-render all results so far, sorted by score
-                sorted_so_far = sorted(
-                    all_evals.values(),
-                    key=lambda x: x.evaluation.score,
-                    reverse=True,
-                )
-                with results_slot.container():
-                    for ev in sorted_so_far:
-                        _render_job_card(ev)
+            def _on_jobs_found(new_unique_jobs: list[JobListing]) -> None:
+                """Submit newly found jobs for evaluation immediately."""
+                for job in new_unique_jobs:
+                    key = f"{job.title}|{job.company_name}"
+                    if key in all_evals:
+                        continue  # already evaluated (from cache)
+                    fut = eval_executor.submit(evaluate_job, client, profile, job)
+                    with eval_lock:
+                        eval_futures[fut] = job
 
-        progress_bar.empty()
-        results_slot.empty()  # clear; final display section takes over
-        cache.save_evaluations(profile, all_evals)
+            # -- Search phase with status wrapper --
+            search_progress = st.progress(0, text="🌍 Scouting jobs...")
+            with st.status("🌍 Searching for jobs...", expanded=False) as search_status:
+
+                def _search_progress(qi: int, total: int, unique: int) -> None:
+                    pct = qi / total
+                    search_progress.progress(
+                        pct, text=f"🌍 Searching query {qi}/{total} — {unique} unique jobs found so far..."
+                    )
+
+                jobs = search_all_queries(
+                    queries,
+                    jobs_per_query=jobs_per_query,
+                    location=location,
+                    on_progress=_search_progress,
+                    on_jobs_found=_on_jobs_found,
+                )
+                cache.save_jobs(jobs, location)
+                search_status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
+            search_progress.empty()
+
+            if not jobs:
+                st.warning("No jobs found. Try adjusting your location or uploading a different CV.")
+                return
+
+            # -- Evaluation phase: collect results from futures already in flight --
+            total_evals = len(eval_futures)
+            if total_evals == 0:
+                pass  # no jobs to evaluate (all were cached)
+            else:
+                # Some evals may have completed during search — the progress bar
+                # and card rendering will catch up immediately.
+                eval_progress = st.progress(0, text=f"⭐ Rating each job for you... (0/{total_evals})")
+                results_container = st.container()
+                for i, future in enumerate(as_completed(eval_futures), 1):
+                    job = eval_futures[future]
+                    evaluation = future.result()
+                    ej = EvaluatedJob(job=job, evaluation=evaluation)
+                    key = f"{ej.job.title}|{ej.job.company_name}"
+                    all_evals[key] = ej
+                    eval_progress.progress(
+                        i / total_evals,
+                        text=f"⭐ Rating each job for you... ({i}/{total_evals})",
+                    )
+                    with results_container:
+                        _render_job_card(ej)
+                eval_progress.empty()
+                results_container.empty()
+
+            cache.save_evaluations(profile, all_evals)
+        finally:
+            eval_executor.shutdown(wait=True, cancel_futures=True)
 
     # Build final sorted list
     evaluated_jobs = sorted(
