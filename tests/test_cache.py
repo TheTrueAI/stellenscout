@@ -1,12 +1,12 @@
-"""Tests for stellenscout.cache — file-based pipeline cache."""
+"""Tests for immermatch.cache — file-based pipeline cache."""
 
 from pathlib import Path
 
 import pytest
 from freezegun import freeze_time
 
-from stellenscout.cache import ResultCache, _hash
-from stellenscout.models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
+from immermatch.cache import ResultCache, _hash
+from immermatch.models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
 
 
 @pytest.fixture()

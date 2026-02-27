@@ -1,11 +1,11 @@
-"""Tests for stellenscout.llm — parse_json() and call_gemini() retry logic."""
+"""Tests for immermatch.llm — parse_json() and call_gemini() retry logic."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 from google.genai.errors import ClientError, ServerError
 
-from stellenscout.llm import call_gemini, parse_json
+from immermatch.llm import call_gemini, parse_json
 
 
 class TestParseJson:
@@ -59,7 +59,7 @@ class TestCallGemini:
         resp.text = text
         return resp
 
-    @patch("stellenscout.llm.time.sleep")
+    @patch("immermatch.llm.time.sleep")
     def test_success_first_try(self, mock_sleep: MagicMock):
         client = self._make_client([self._make_response("hello")])
 
@@ -68,7 +68,7 @@ class TestCallGemini:
         assert result == "hello"
         mock_sleep.assert_not_called()
 
-    @patch("stellenscout.llm.time.sleep")
+    @patch("immermatch.llm.time.sleep")
     def test_retries_on_server_error(self, mock_sleep: MagicMock):
         client = self._make_client(
             [
@@ -82,7 +82,7 @@ class TestCallGemini:
         assert result == "recovered"
         assert mock_sleep.call_count == 1
 
-    @patch("stellenscout.llm.time.sleep")
+    @patch("immermatch.llm.time.sleep")
     def test_retries_on_429_client_error(self, mock_sleep: MagicMock):
         client = self._make_client(
             [
@@ -96,7 +96,7 @@ class TestCallGemini:
         assert result == "ok"
         assert mock_sleep.call_count == 1
 
-    @patch("stellenscout.llm.time.sleep")
+    @patch("immermatch.llm.time.sleep")
     def test_raises_immediately_on_non_429_client_error(self, mock_sleep: MagicMock):
         client = self._make_client([ClientError(400, {"error": "Bad Request"})])
 

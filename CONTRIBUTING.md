@@ -1,4 +1,4 @@
-# Contributing to StellenScout
+# Contributing to Immermatch
 
 Thanks for your interest in contributing! This guide covers setup, conventions, and the PR process.
 
@@ -12,8 +12,8 @@ Thanks for your interest in contributing! This guide covers setup, conventions, 
 ### Installation
 
 ```bash
-git clone https://github.com/TheTrueAI/stellenscout.git
-cd stellenscout
+git clone https://github.com/TheTrueAI/immermatch.git
+cd immermatch
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,test]"
@@ -32,7 +32,7 @@ No API keys are needed for running tests — all external services are mocked.
 2. Make your changes and run quality checks:
    ```bash
    ruff check . && ruff format --check .
-   mypy stellenscout/ daily_task.py
+   mypy immermatch/ daily_task.py
    pytest tests/ -x -q
    ```
 
@@ -59,8 +59,8 @@ No API keys are needed for running tests — all external services are mocked.
 - **All external services must be mocked** — Gemini, SerpApi, Supabase, and Resend should never be called in tests
 - **Shared fixtures** are in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
 - **Test fixture files** (sample CVs, etc.) go in `tests/fixtures/`
-- **File naming:** `tests/test_<module>.py` for `stellenscout/<module>.py`
-- **Pydantic models** live in `stellenscout/models.py` — follow existing patterns
+- **File naming:** `tests/test_<module>.py` for `immermatch/<module>.py`
+- **Pydantic models** live in `immermatch/models.py` — follow existing patterns
 
 ## Project Conventions
 
@@ -78,7 +78,7 @@ No API keys are needed for running tests — all external services are mocked.
 
 ## Reporting Issues
 
-- Search [existing issues](https://github.com/TheTrueAI/stellenscout/issues) first
+- Search [existing issues](https://github.com/TheTrueAI/immermatch/issues) first
 - Use the provided issue templates (bug report, feature request, question)
 - For bugs: include steps to reproduce, expected vs actual behavior, and your environment (Python version, OS)
 

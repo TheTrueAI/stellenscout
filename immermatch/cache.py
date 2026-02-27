@@ -1,4 +1,4 @@
-"""JSON file cache for StellenScout pipeline results."""
+"""JSON file cache for Immermatch pipeline results."""
 
 import hashlib
 import json
@@ -10,7 +10,7 @@ from .models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CACHE_DIR = Path(".stellenscout_cache")
+DEFAULT_CACHE_DIR = Path(".immermatch_cache")
 
 
 def _hash(text: str) -> str:

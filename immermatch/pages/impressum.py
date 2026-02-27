@@ -16,7 +16,7 @@ _address = os.environ.get("IMPRESSUM_ADDRESS", "")
 _email = os.environ.get("IMPRESSUM_EMAIL", "")
 _phone = os.environ.get("IMPRESSUM_PHONE", "")
 
-st.set_page_config(page_title="StellenScout – Legal Notice", page_icon="⚖️")
+st.set_page_config(page_title="Immermatch – Legal Notice", page_icon="⚖️")
 
 st.title("Legal Notice / Impressum")
 st.caption("Information pursuant to § 5 DDG (Digitale-Dienste-Gesetz)")

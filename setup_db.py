@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Initialize the StellenScout Supabase database tables.
+"""Initialize the Immermatch Supabase database tables.
 
 Verifies that the required tables exist and prints any missing schema
 that needs to be created via the Supabase SQL Editor.

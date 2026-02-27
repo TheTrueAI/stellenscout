@@ -1,4 +1,4 @@
-"""Supabase database layer for StellenScout."""
+"""Supabase database layer for Immermatch."""
 
 import os
 from datetime import datetime, timezone

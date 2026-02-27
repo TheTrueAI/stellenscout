@@ -1,10 +1,10 @@
-"""Tests for stellenscout.emailer — HTML builder pure functions."""
+"""Tests for immermatch.emailer — HTML builder pure functions."""
 
 from unittest.mock import patch
 
 import pytest
 
-from stellenscout.emailer import (
+from immermatch.emailer import (
     _build_html,
     _build_job_row,
     _impressum_line,
@@ -116,7 +116,7 @@ class TestBuildHtml:
 
     def test_contains_subscriber_explanation(self):
         html = _build_html([])
-        assert "You're receiving this because you subscribed to StellenScout" in html
+        assert "You're receiving this because you subscribed to Immermatch" in html
 
 
 class TestImpressumLine:
@@ -134,7 +134,7 @@ class TestImpressumLine:
         monkeypatch.delenv("IMPRESSUM_ADDRESS", raising=False)
         monkeypatch.delenv("IMPRESSUM_EMAIL", raising=False)
         line = _impressum_line()
-        assert line == "StellenScout"
+        assert line == "Immermatch"
 
 
 class TestSendWelcomeEmail:
@@ -143,28 +143,28 @@ class TestSendWelcomeEmail:
         with pytest.raises(ValueError, match="RESEND_API_KEY"):
             send_welcome_email("user@example.com")
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_contains_location(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_welcome_email("user@example.com", target_location="Munich")
         html = mock_send.call_args[0][0]["html"]
         assert "Munich" in html
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_contains_subscription_days(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_welcome_email("user@example.com", subscription_days=30)
         html = mock_send.call_args[0][0]["html"]
         assert "30 days" in html
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_contains_privacy_link(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_welcome_email("user@example.com", privacy_url="https://app.test/privacy")
         html = mock_send.call_args[0][0]["html"]
         assert "https://app.test/privacy" in html
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_without_location(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_welcome_email("user@example.com", target_location="")
@@ -172,7 +172,7 @@ class TestSendWelcomeEmail:
         assert "&#128205;" not in html
         assert "daily job digest is now active" in html
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_includes_impressum(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         monkeypatch.setenv("IMPRESSUM_NAME", "Jane Doe")
@@ -180,7 +180,7 @@ class TestSendWelcomeEmail:
         html = mock_send.call_args[0][0]["html"]
         assert "Jane Doe" in html
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_contains_unsubscribe_link(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_welcome_email("user@example.com", unsubscribe_url="https://app.test/unsubscribe?token=abc")
@@ -190,7 +190,7 @@ class TestSendWelcomeEmail:
         headers = mock_send.call_args[0][0].get("headers", {})
         assert "List-Unsubscribe" in headers
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_welcome_no_unsubscribe_footer_link_when_empty(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_welcome_email("user@example.com", unsubscribe_url="")
@@ -200,7 +200,7 @@ class TestSendWelcomeEmail:
 
 
 class TestSendVerificationEmail:
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_verification_contains_confirm_button(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_verification_email("user@example.com", "https://app.test/verify?token=xyz")
@@ -208,7 +208,7 @@ class TestSendVerificationEmail:
         assert "Confirm subscription" in html
         assert "https://app.test/verify?token=xyz" in html
 
-    @patch("stellenscout.emailer.resend.Emails.send", return_value={"id": "123"})
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
     def test_verification_contains_feature_preview(self, mock_send, monkeypatch):
         monkeypatch.setenv("RESEND_API_KEY", "re_test")
         send_verification_email("user@example.com", "https://app.test/verify?token=xyz")

@@ -34,7 +34,7 @@ jobs:
           cache: pip
       - run: pip install -e ".[test]"
       - name: Type check (mypy)
-        run: mypy stellenscout/ daily_task.py
+        run: mypy immermatch/ daily_task.py
 
   test:
     runs-on: ubuntu-latest
@@ -46,7 +46,7 @@ jobs:
           cache: pip
       - run: pip install -e ".[test]"
       - name: Tests
-        run: pytest -v --cov=stellenscout --cov-report=term
+        run: pytest -v --cov=immermatch --cov-report=term
 
   audit:
     runs-on: ubuntu-latest

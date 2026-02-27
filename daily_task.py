@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""StellenScout daily digest — designed to run in GitHub Actions.
+"""Immermatch daily digest — designed to run in GitHub Actions.
 
 Per-subscriber pipeline:
   1. Expire subscriptions past their 30-day window.
@@ -28,7 +28,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from stellenscout.db import (
+from immermatch.db import (
     expire_subscriptions,
     get_active_subscribers_with_profiles,
     get_job_ids_by_urls,
@@ -38,14 +38,14 @@ from stellenscout.db import (
     purge_inactive_subscribers,
     upsert_jobs,
 )
-from stellenscout.db import (
+from immermatch.db import (
     get_admin_client as get_db,
 )
-from stellenscout.emailer import send_daily_digest
-from stellenscout.evaluator_agent import evaluate_all_jobs
-from stellenscout.llm import create_client
-from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing
-from stellenscout.search_agent import search_all_queries
+from immermatch.emailer import send_daily_digest
+from immermatch.evaluator_agent import evaluate_all_jobs
+from immermatch.llm import create_client
+from immermatch.models import CandidateProfile, EvaluatedJob, JobListing
+from immermatch.search_agent import search_all_queries
 
 logging.basicConfig(
     level=logging.INFO,

@@ -6,7 +6,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Have a question? Please check the [README](https://github.com/TheTrueAI/stellenscout#readme) and [AGENTS.md](https://github.com/TheTrueAI/stellenscout/blob/main/AGENTS.md) first.
+        Have a question? Please check the [README](https://github.com/TheTrueAI/immermatch#readme) and [AGENTS.md](https://github.com/TheTrueAI/immermatch/blob/main/AGENTS.md) first.
 
   - type: textarea
     id: question

@@ -15,7 +15,7 @@ _name = os.environ.get("IMPRESSUM_NAME", "")
 _address = os.environ.get("IMPRESSUM_ADDRESS", "")
 _email = os.environ.get("IMPRESSUM_EMAIL", "")
 
-st.set_page_config(page_title="StellenScout – Privacy Policy", page_icon="🔒")
+st.set_page_config(page_title="Immermatch – Privacy Policy", page_icon="🔒")
 
 st.title("Privacy Policy")
 
@@ -54,7 +54,7 @@ AI-powered candidate profiling and job evaluation. **Google does not use your
 data to train its models** (Paid Services tier). Google may retain API inputs
 and outputs for up to **30 days** solely for abuse monitoring and legal
 obligations, after which they are deleted. Your uploaded CV file is not
-permanently stored by StellenScout — it is processed in memory and discarded
+permanently stored by Immermatch — it is processed in memory and discarded
 after analysis.
 
 Search queries derived from your profile are sent to **SerpAPI** to retrieve
@@ -75,7 +75,7 @@ and [Gemini API Terms of Service](https://ai.google.dev/gemini-api/terms).
 
 ## 4. Third-Party Processors
 
-We use the following services to operate StellenScout:
+We use the following services to operate Immermatch:
 
 | Service | Provider | Purpose | Privacy Policy |
 |---|---|---|---|
@@ -92,7 +92,7 @@ applicable to Paid Services.
 
 ## 5. Use of Artificial Intelligence
 
-StellenScout uses AI (Google Gemini) to:
+Immermatch uses AI (Google Gemini) to:
 
 1. **Analyze your CV** and extract a structured candidate profile (skills,
    experience, roles, etc.).
@@ -124,7 +124,7 @@ If you have questions about how the AI evaluation works, contact us at
 
 ## 7. Cookies
 
-StellenScout does **not** use tracking cookies. Streamlit sets technically
+Immermatch does **not** use tracking cookies. Streamlit sets technically
 necessary session cookies required for the application to function.
 
 ## 8. International Data Transfers
