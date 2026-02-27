@@ -1,12 +1,12 @@
-"""Tests for stellenscout.evaluator_agent — evaluate_job, evaluate_all_jobs, generate_summary."""
+"""Tests for immermatch.evaluator_agent — evaluate_job, evaluate_all_jobs, generate_summary."""
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 from google.genai.errors import ServerError
 
-from stellenscout.evaluator_agent import evaluate_all_jobs, evaluate_job, generate_summary
-from stellenscout.models import (
+from immermatch.evaluator_agent import evaluate_all_jobs, evaluate_job, generate_summary
+from immermatch.models import (
     CandidateProfile,
     EvaluatedJob,
     JobEvaluation,
@@ -44,8 +44,8 @@ def simple_job() -> JobListing:
 class TestEvaluateJob:
     """Tests for evaluate_job() — mock call_gemini + parse_json."""
 
-    @patch("stellenscout.evaluator_agent.parse_json")
-    @patch("stellenscout.evaluator_agent.call_gemini")
+    @patch("immermatch.evaluator_agent.parse_json")
+    @patch("immermatch.evaluator_agent.call_gemini")
     def test_happy_path(self, mock_call: MagicMock, mock_parse: MagicMock, mock_client, simple_profile, simple_job):
         mock_call.return_value = '{"score": 82, "reasoning": "Good fit", "missing_skills": ["Go"]}'
         mock_parse.return_value = {"score": 82, "reasoning": "Good fit", "missing_skills": ["Go"]}
@@ -58,7 +58,7 @@ class TestEvaluateJob:
         assert result.missing_skills == ["Go"]
         mock_call.assert_called_once()
 
-    @patch("stellenscout.evaluator_agent.call_gemini")
+    @patch("immermatch.evaluator_agent.call_gemini")
     def test_api_error_returns_fallback(self, mock_call: MagicMock, mock_client, simple_profile, simple_job):
         mock_call.side_effect = ServerError(503, {"error": "Service Unavailable"})
 
@@ -67,8 +67,8 @@ class TestEvaluateJob:
         assert result.score == 50
         assert "API error" in result.reasoning
 
-    @patch("stellenscout.evaluator_agent.parse_json")
-    @patch("stellenscout.evaluator_agent.call_gemini")
+    @patch("immermatch.evaluator_agent.parse_json")
+    @patch("immermatch.evaluator_agent.call_gemini")
     def test_parse_error_returns_fallback(
         self, mock_call: MagicMock, mock_parse: MagicMock, mock_client, simple_profile, simple_job
     ):
@@ -80,8 +80,8 @@ class TestEvaluateJob:
         assert result.score == 50
         assert "parse" in result.reasoning
 
-    @patch("stellenscout.evaluator_agent.parse_json")
-    @patch("stellenscout.evaluator_agent.call_gemini")
+    @patch("immermatch.evaluator_agent.parse_json")
+    @patch("immermatch.evaluator_agent.call_gemini")
     def test_non_dict_response_returns_fallback(
         self, mock_call: MagicMock, mock_parse: MagicMock, mock_client, simple_profile, simple_job
     ):
@@ -97,7 +97,7 @@ class TestEvaluateJob:
 class TestEvaluateAllJobs:
     """Tests for evaluate_all_jobs() — mock evaluate_job."""
 
-    @patch("stellenscout.evaluator_agent.evaluate_job")
+    @patch("immermatch.evaluator_agent.evaluate_job")
     def test_results_sorted_by_score_descending(self, mock_eval: MagicMock, mock_client, simple_profile):
         jobs = [
             JobListing(title="Job A", company_name="Co", location="Berlin"),
@@ -115,7 +115,7 @@ class TestEvaluateAllJobs:
         scores = [r.evaluation.score for r in results]
         assert scores == [90, 70, 40]
 
-    @patch("stellenscout.evaluator_agent.evaluate_job")
+    @patch("immermatch.evaluator_agent.evaluate_job")
     def test_progress_callback_called(self, mock_eval: MagicMock, mock_client, simple_profile):
         jobs = [
             JobListing(title="Job A", company_name="Co", location="Berlin"),
@@ -136,7 +136,7 @@ class TestEvaluateAllJobs:
         assert all(total == 2 for _, total in progress_calls)
         assert sorted(c for c, _ in progress_calls) == [1, 2]
 
-    @patch("stellenscout.evaluator_agent.evaluate_job")
+    @patch("immermatch.evaluator_agent.evaluate_job")
     def test_empty_job_list(self, mock_eval: MagicMock, mock_client, simple_profile):
         results = evaluate_all_jobs(mock_client, simple_profile, [])
 
@@ -147,7 +147,7 @@ class TestEvaluateAllJobs:
 class TestGenerateSummary:
     """Tests for generate_summary() — mock call_gemini, assert prompt content."""
 
-    @patch("stellenscout.evaluator_agent.call_gemini")
+    @patch("immermatch.evaluator_agent.call_gemini")
     def test_prompt_contains_score_distribution(self, mock_call: MagicMock, mock_client, simple_profile):
         evaluated_jobs = [
             EvaluatedJob(
@@ -168,7 +168,7 @@ class TestGenerateSummary:
         assert "≥80: 1" in prompt
         assert "<50: 1" in prompt
 
-    @patch("stellenscout.evaluator_agent.call_gemini")
+    @patch("immermatch.evaluator_agent.call_gemini")
     def test_prompt_contains_missing_skills(self, mock_call: MagicMock, mock_client, simple_profile):
         evaluated_jobs = [
             EvaluatedJob(

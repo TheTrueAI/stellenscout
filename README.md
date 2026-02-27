@@ -1,13 +1,13 @@
-# StellenScout
+# Immermatch
 
-[![CI](https://github.com/TheTrueAI/stellenscout/actions/workflows/ci.yml/badge.svg)](https://github.com/TheTrueAI/stellenscout/actions/workflows/ci.yml)
+[![CI](https://github.com/TheTrueAI/immermatch/actions/workflows/ci.yml/badge.svg)](https://github.com/TheTrueAI/immermatch/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-green.svg)](https://www.python.org/)
 
 AI-powered job matching for the European market. Upload your CV, and the app uses Google Gemini to analyze your profile, searches for relevant jobs via Google Jobs, and scores each listing against your skills and experience.
 
 ---
-![Screenshot of the StellenScout web interface showing AI-powered job matching results](https://github.com/user-attachments/assets/e450bfb6-6aa0-4c24-aa53-be8695146b03)
+![Screenshot of the Immermatch web interface showing AI-powered job matching results](https://github.com/user-attachments/assets/e450bfb6-6aa0-4c24-aa53-be8695146b03)
 
 ---
 ## Features
@@ -32,8 +32,8 @@ AI-powered job matching for the European market. Upload your CV, and the app use
 ### Setup
 
 ```bash
-git clone https://github.com/TheTrueAI/stellenscout.git
-cd stellenscout
+git clone https://github.com/TheTrueAI/immermatch.git
+cd immermatch
 python -m venv .venv
 source .venv/bin/activate
 pip install -e .
@@ -49,7 +49,7 @@ cp .env.example .env
 ### Run the App
 
 ```bash
-streamlit run stellenscout/app.py
+streamlit run immermatch/app.py
 ```
 
 ## How It Works
@@ -75,7 +75,7 @@ Copy `.env.example` to `.env` and fill in your keys. The app also supports `.str
 | `SUPABASE_KEY` | For newsletter | Supabase anon/publishable key |
 | `SUPABASE_SERVICE_KEY` | For newsletter | Supabase service-role key (bypasses RLS) |
 | `RESEND_API_KEY` | For newsletter | Resend API key ([get one](https://resend.com/)) |
-| `RESEND_FROM` | For newsletter | Sender address, e.g. `StellenScout <digest@yourdomain.com>` |
+| `RESEND_FROM` | For newsletter | Sender address, e.g. `Immermatch <digest@yourdomain.com>` |
 | `APP_URL` | For newsletter | Public app URL for email verification links |
 | `IMPRESSUM_NAME` | For newsletter | Legal notice: your full name (§ 5 DDG) |
 | `IMPRESSUM_ADDRESS` | For newsletter | Legal notice: your postal address |
@@ -117,7 +117,7 @@ See `AGENTS.md` §10 for the full email lifecycle (double opt-in, auto-expiry, u
 
 ```bash
 pip install -e ".[test]"
-pytest tests/ -v --cov=stellenscout --cov-report=term-missing
+pytest tests/ -v --cov=immermatch --cov-report=term-missing
 ```
 
 All external services (Gemini, SerpApi, Supabase, Resend) are mocked — no API keys needed to run the test suite.
@@ -126,7 +126,7 @@ Linting and type checking:
 
 ```bash
 ruff check . && ruff format --check .
-mypy stellenscout/ daily_task.py
+mypy immermatch/ daily_task.py
 ```
 
 Pre-commit hooks are available for automatic quality gates:
@@ -139,7 +139,7 @@ pre-commit install --hook-type pre-commit --hook-type pre-push
 ## Project Structure
 
 ```
-stellenscout/
+immermatch/
   app.py              # Streamlit web UI
   llm.py              # Gemini client and retry logic
   cv_parser.py        # CV text extraction (PDF/DOCX/MD/TXT)
@@ -161,7 +161,7 @@ tests/                # tests (all mocked)
 
 ## Privacy & Data Handling
 
-StellenScout is designed with GDPR compliance in mind:
+Immermatch is designed with GDPR compliance in mind:
 
 - **Session-scoped caching** — CV data is cached locally per session and auto-cleaned after 24 hours
 - **Double opt-in** — Newsletter subscriptions require email verification
@@ -178,4 +178,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding conventions
 
 ## License
 
-[AGPL-3.0](LICENSE) — You're free to use, modify, and self-host StellenScout. If you host a modified version, you must release your changes under the same license.
+[AGPL-3.0](LICENSE) — You're free to use, modify, and self-host Immermatch. If you host a modified version, you must release your changes under the same license.

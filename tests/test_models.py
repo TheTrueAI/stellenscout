@@ -1,9 +1,9 @@
-"""Tests for stellenscout.models — Pydantic model validation."""
+"""Tests for immermatch.models — Pydantic model validation."""
 
 import pytest
 from pydantic import ValidationError
 
-from stellenscout.models import (
+from immermatch.models import (
     CandidateProfile,
     EducationEntry,
     JobEvaluation,

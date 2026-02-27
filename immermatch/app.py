@@ -1,4 +1,4 @@
-"""Streamlit web UI for StellenScout."""
+"""Streamlit web UI for Immermatch."""
 
 import hashlib
 import logging
@@ -19,7 +19,7 @@ jobs_per_query = 10  # default value
 
 # ---------------------------------------------------------------------------
 # Inject API keys from Streamlit secrets into env vars
-# (must happen before any stellenscout imports that read env vars)
+# (must happen before any immermatch imports that read env vars)
 # ---------------------------------------------------------------------------
 for key in (
     "GOOGLE_API_KEY",
@@ -42,13 +42,13 @@ from pathlib import Path as _Path  # noqa: E402
 
 _sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
 
-from stellenscout.cache import ResultCache  # noqa: E402
-from stellenscout.cv_parser import SUPPORTED_EXTENSIONS, extract_text  # noqa: E402
-from stellenscout.db import SUBSCRIPTION_DAYS  # noqa: E402
-from stellenscout.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
-from stellenscout.llm import create_client  # noqa: E402
-from stellenscout.models import CandidateProfile, EvaluatedJob, JobListing  # noqa: E402
-from stellenscout.search_agent import (  # noqa: E402
+from immermatch.cache import ResultCache  # noqa: E402
+from immermatch.cv_parser import SUPPORTED_EXTENSIONS, extract_text  # noqa: E402
+from immermatch.db import SUBSCRIPTION_DAYS  # noqa: E402
+from immermatch.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
+from immermatch.llm import create_client  # noqa: E402
+from immermatch.models import CandidateProfile, EvaluatedJob, JobListing  # noqa: E402
+from immermatch.search_agent import (  # noqa: E402
     generate_search_queries,
     profile_candidate,
     search_all_queries,
@@ -58,7 +58,7 @@ from stellenscout.search_agent import (  # noqa: E402
 # Page configuration
 # ---------------------------------------------------------------------------
 st.set_page_config(
-    page_title="StellenScout",
+    page_title="Immermatch",
     page_icon="🔍",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -220,7 +220,7 @@ for k, v in _DEFAULTS.items():
 # ---------------------------------------------------------------------------
 # Cache scoped to this browser session
 # ---------------------------------------------------------------------------
-CACHE_ROOT = Path(".stellenscout_cache")
+CACHE_ROOT = Path(".immermatch_cache")
 
 
 def _cv_file_hash(data: bytes) -> str:
@@ -264,8 +264,8 @@ def _cleanup_old_sessions(max_age_hours: int = 24, max_sessions: int = 50) -> No
 if "cleanup_done" not in st.session_state:
     _cleanup_old_sessions()
     try:
-        from stellenscout.db import get_admin_client as _get_admin_db
-        from stellenscout.db import purge_inactive_subscribers
+        from immermatch.db import get_admin_client as _get_admin_db
+        from immermatch.db import purge_inactive_subscribers
 
         _db = _get_admin_db()
         purge_inactive_subscribers(_db, older_than_days=30)
@@ -491,7 +491,7 @@ def _keys_ok() -> bool:
 # Sidebar — status & settings panel
 # ---------------------------------------------------------------------------
 with st.sidebar:
-    st.title("🔍 StellenScout")
+    st.title("🔍 Immermatch")
     st.caption("AI-powered job matching")
     st.divider()
 
@@ -536,7 +536,7 @@ with st.sidebar:
     st.caption(
         "Built with [Streamlit](https://streamlit.io) • "
         "Powered by Gemini & SerpApi  \n"
-        "[GitHub](https://github.com/TheTrueAI/stellenscout) · "
+        "[GitHub](https://github.com/TheTrueAI/immermatch) · "
         "[Legal Notice / Impressum](/impressum) · [Privacy Policy](/privacy)"
     )
 
@@ -592,8 +592,8 @@ if not has_cv:
 
     # Recent DB jobs below
     try:
-        from stellenscout.db import get_admin_client as _get_db_browse
-        from stellenscout.db import get_all_jobs
+        from immermatch.db import get_admin_client as _get_db_browse
+        from immermatch.db import get_all_jobs
 
         _db_browse = _get_db_browse()
         _saved_jobs = get_all_jobs(_db_browse)
@@ -1084,20 +1084,20 @@ if st.session_state.evaluated_jobs is not None:
                 from datetime import timedelta as _td
                 from datetime import timezone as _tz
 
-                from stellenscout.db import (
+                from immermatch.db import (
                     add_subscriber,
                     get_job_ids_by_urls,
                     get_subscriber_by_email,
                     log_sent_jobs,
                     save_subscription_context,
                 )
-                from stellenscout.db import (
+                from immermatch.db import (
                     get_admin_client as _get_admin_db,
                 )
-                from stellenscout.db import (
+                from immermatch.db import (
                     upsert_jobs as _upsert_jobs,
                 )
-                from stellenscout.emailer import send_verification_email
+                from immermatch.emailer import send_verification_email
 
                 _db = _get_admin_db()
                 _token = secrets.token_urlsafe(32)

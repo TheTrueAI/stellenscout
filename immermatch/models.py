@@ -1,4 +1,4 @@
-"""Pydantic models for StellenScout data structures."""
+"""Pydantic models for Immermatch data structures."""
 
 from typing import Literal
 

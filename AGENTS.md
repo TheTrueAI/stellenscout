@@ -1,6 +1,6 @@
 # Agent Architectures
 
-This document defines the persona, context, and instruction sets for the AI agents used in StellenScout.
+This document defines the persona, context, and instruction sets for the AI agents used in Immermatch.
 
 **LLM Provider:** Google AI Studio (Gemini)
 **Model:** gemini-3-flash-preview
@@ -278,10 +278,10 @@ class EvaluatedJob(BaseModel):
 
 ## 7. Caching (`cache.py`)
 
-All pipeline results are cached to JSON in `.stellenscout_cache/` to minimize API usage across runs.
+All pipeline results are cached to JSON in `.immermatch_cache/` to minimize API usage across runs.
 
 ```
-.stellenscout_cache/
+.immermatch_cache/
 ├── profile.json       # keyed by CV hash (SHA-256)
 ├── queries.json       # keyed by profile hash + location
 ├── jobs.json          # date-stamped, merged with existing jobs
@@ -304,7 +304,7 @@ Three-phase UI flow:
 - **Phase C (Results):** Filterable/sortable job cards, career summary, newsletter subscription
 
 Features:
-- Session-scoped cache directories under `.stellenscout_cache/<cv_file_hash>/`
+- Session-scoped cache directories under `.immermatch_cache/<cv_file_hash>/`
 - Auto-cleanup of session caches older than 24 hours (max 50 sessions)
 - Sidebar: status panel, min score slider, secondary CV uploader, legal links
 - GDPR consent checkbox required before CV upload (consent text versioned as `_CONSENT_TEXT_VERSION`)
@@ -492,7 +492,7 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 - Shared fixtures in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
 - Test fixtures (text files) live in `tests/fixtures/`
 - Run: `pytest tests/ -v`
-- Coverage: `pytest tests/ --cov=stellenscout --cov-report=term-missing`
+- Coverage: `pytest tests/ --cov=immermatch --cov-report=term-missing`
 
 ---
 
@@ -502,11 +502,11 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 
 **Model:** Open Source + Hosted Paid Service (open-core)
 
-The source code is publicly available on GitHub under AGPL-3.0. The AGPL requires that anyone who hosts a modified version of StellenScout must also release their source code — this protects against competitors forking the project and running a closed-source competing service.
+The source code is publicly available on GitHub under AGPL-3.0. The AGPL requires that anyone who hosts a modified version of Immermatch must also release their source code — this protects against competitors forking the project and running a closed-source competing service.
 
 ### What users pay for
 
-StellenScout is **free to self-host** (bring your own API keys). The official hosted version at the project domain charges a subscription fee for:
+Immermatch is **free to self-host** (bring your own API keys). The official hosted version at the project domain charges a subscription fee for:
 - Managed hosting (no API key setup required)
 - SerpAPI & Gemini API quota included
 - Daily digest email infrastructure
@@ -540,7 +540,7 @@ source .venv/bin/activate
 # Test:    pytest tests/ -x -q
 # Lint:    ruff check . && ruff format --check .
 # Types:   mypy .
-# Run app: streamlit run stellenscout/app.py
+# Run app: streamlit run immermatch/app.py
 # All:     ruff check . && mypy . && pytest tests/ -x -q
 ```
 
@@ -549,14 +549,14 @@ source .venv/bin/activate
 - **Always activate the virtual environment** (`source .venv/bin/activate`) before running any command (`pytest`, `ruff`, `mypy`, `streamlit`, etc.). The project's dependencies are installed only in `.venv`.
 - Use `google-genai` package, NOT the deprecated `google.generativeai`
 - Gemini model: `gemini-3-flash-preview`
-- Pydantic models live in `stellenscout/models.py` — follow existing patterns
+- Pydantic models live in `immermatch/models.py` — follow existing patterns
 - All external services (Gemini, SerpAPI, Supabase, Resend) must be mocked in tests — no API keys needed to run `pytest`
 - Shared test fixtures in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
 - Test fixture files (sample CVs, etc.) live in `tests/fixtures/`
 - All DB writes use the admin client (`get_admin_client()`), never the anon client
 - Log subscriber UUIDs, never email addresses
 - All `st.error()` calls must show generic messages; real exceptions go to `logger.exception()`
-- Follow the test file naming convention: `tests/test_<module>.py` for `stellenscout/<module>.py`
+- Follow the test file naming convention: `tests/test_<module>.py` for `immermatch/<module>.py`
 - After implementing changes, always run `pytest tests/ -x -q` to verify nothing is broken
 
 ### Development workflow

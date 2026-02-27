@@ -1,4 +1,4 @@
-# StellenScout Dependencies
+# Immermatch Dependencies
 # Python 3.10+ required
 
 # PDF parsing

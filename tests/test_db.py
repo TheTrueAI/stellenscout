@@ -1,4 +1,4 @@
-"""Tests for stellenscout.db — GDPR data lifecycle & subscriber management."""
+"""Tests for immermatch.db — GDPR data lifecycle & subscriber management."""
 
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
-from stellenscout import db
+from immermatch import db
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -137,8 +137,8 @@ class TestDeactivateSubscriberByToken:
         """Wire the select→eq→execute chain for the initial token lookup."""
         client.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_execute(data=rows)
 
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber", return_value=True)
+    @patch("immermatch.db.delete_subscriber_data")
+    @patch("immermatch.db.deactivate_subscriber", return_value=True)
     def test_valid_token_deactivates_and_deletes(self, mock_deactivate, mock_delete):
         client = _mock_client()
         expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
@@ -190,8 +190,8 @@ class TestExpireSubscriptions:
             result
         )
 
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber", return_value=True)
+    @patch("immermatch.db.delete_subscriber_data")
+    @patch("immermatch.db.deactivate_subscriber", return_value=True)
     @freeze_time("2026-02-20T12:00:00Z")
     def test_expires_past_due_subscribers(self, mock_deactivate, mock_delete):
         client = _mock_client()
@@ -214,8 +214,8 @@ class TestExpireSubscriptions:
 
         assert db.expire_subscriptions(client) == 0
 
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber")
+    @patch("immermatch.db.delete_subscriber_data")
+    @patch("immermatch.db.deactivate_subscriber")
     @freeze_time("2026-02-20T12:00:00Z")
     def test_skips_concurrently_deactivated(self, mock_deactivate, mock_delete):
         client = _mock_client()
@@ -229,8 +229,8 @@ class TestExpireSubscriptions:
         mock_deactivate.assert_not_called()
         mock_delete.assert_not_called()
 
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber", return_value=True)
+    @patch("immermatch.db.delete_subscriber_data")
+    @patch("immermatch.db.deactivate_subscriber", return_value=True)
     @freeze_time("2026-02-20T12:00:00Z")
     def test_data_deleted_after_deactivation(self, mock_deactivate, mock_delete):
         client = _mock_client()
@@ -241,8 +241,8 @@ class TestExpireSubscriptions:
 
         mock_delete.assert_called_once_with(client, "sub-1")
 
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber")
+    @patch("immermatch.db.delete_subscriber_data")
+    @patch("immermatch.db.deactivate_subscriber")
     @freeze_time("2026-02-20T12:00:00Z")
     def test_handles_missing_subscriber_on_recheck(self, mock_deactivate, mock_delete):
         client = _mock_client()
@@ -526,8 +526,8 @@ class TestSaveSubscriptionContext:
 class TestGDPRLifecycle:
     """End-to-end GDPR lifecycle tests combining multiple db functions."""
 
-    @patch("stellenscout.db.delete_subscriber_data")
-    @patch("stellenscout.db.deactivate_subscriber", return_value=True)
+    @patch("immermatch.db.delete_subscriber_data")
+    @patch("immermatch.db.deactivate_subscriber", return_value=True)
     @freeze_time("2026-02-20T12:00:00Z")
     def test_subscribe_verify_expire_purge(self, mock_deactivate, mock_delete):
         """Full lifecycle: subscribe → confirm → expire → purge."""

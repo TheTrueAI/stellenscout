@@ -25,9 +25,9 @@ for key in (
         except (KeyError, FileNotFoundError):
             pass
 
-from stellenscout.db import SUBSCRIPTION_DAYS, confirm_subscriber, get_admin_client, set_subscriber_expiry  # noqa: E402
+from immermatch.db import SUBSCRIPTION_DAYS, confirm_subscriber, get_admin_client, set_subscriber_expiry  # noqa: E402
 
-st.set_page_config(page_title="StellenScout – Confirm Subscription", page_icon="✅")
+st.set_page_config(page_title="Immermatch – Confirm Subscription", page_icon="✅")
 
 token = st.query_params.get("token")
 
@@ -84,7 +84,7 @@ if subscriber:
         st.stop()
 
     st.success(
-        f"Subscription confirmed! You will receive the daily StellenScout digest "
+        f"Subscription confirmed! You will receive the daily Immermatch digest "
         f"for {SUBSCRIPTION_DAYS} days. You can unsubscribe at any time via the link in each email."
     )
     st.balloons()
@@ -94,8 +94,8 @@ if subscriber:
         import secrets as _secrets
         from datetime import timedelta as _td
 
-        from stellenscout.db import issue_unsubscribe_token
-        from stellenscout.emailer import send_welcome_email
+        from immermatch.db import issue_unsubscribe_token
+        from immermatch.emailer import send_welcome_email
 
         _app_url = os.environ.get("APP_URL", "").rstrip("/")
 

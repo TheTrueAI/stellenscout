@@ -1,12 +1,12 @@
-"""Tests for stellenscout.search_agent — pure helper functions and search_all_queries orchestration."""
+"""Tests for immermatch.search_agent — pure helper functions and search_all_queries orchestration."""
 
 import json
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from stellenscout.models import ApplyOption, CandidateProfile, JobListing
-from stellenscout.search_agent import (
+from immermatch.models import ApplyOption, CandidateProfile, JobListing
+from immermatch.search_agent import (
     _infer_gl,
     _is_remote_only,
     _localise_query,
@@ -186,7 +186,7 @@ class TestSearchAllQueries:
             apply_options=[ApplyOption(source="LinkedIn", url="https://linkedin.com/1")],
         )
 
-    @patch("stellenscout.search_agent.search_jobs")
+    @patch("immermatch.search_agent.search_jobs")
     def test_appends_localised_location_to_query_without_one(self, mock_search: MagicMock):
         mock_search.return_value = [self._make_job("Dev")]
 
@@ -203,7 +203,7 @@ class TestSearchAllQueries:
         assert mock_search.call_args[1]["gl"] == "de"
         assert mock_search.call_args[1]["location"] == "Munich, Germany"
 
-    @patch("stellenscout.search_agent.search_jobs")
+    @patch("immermatch.search_agent.search_jobs")
     def test_does_not_double_append_location(self, mock_search: MagicMock):
         mock_search.return_value = [self._make_job("Dev")]
 
@@ -217,7 +217,7 @@ class TestSearchAllQueries:
         actual_query = mock_search.call_args[0][0]
         assert actual_query.count("München") == 1
 
-    @patch("stellenscout.search_agent.search_jobs")
+    @patch("immermatch.search_agent.search_jobs")
     def test_remote_search_omits_gl_and_serpapi_location(self, mock_search: MagicMock):
         mock_search.return_value = [self._make_job("Remote Dev")]
 
@@ -230,7 +230,7 @@ class TestSearchAllQueries:
         assert mock_search.call_args[1]["gl"] is None
         assert mock_search.call_args[1]["location"] is None
 
-    @patch("stellenscout.search_agent.search_jobs")
+    @patch("immermatch.search_agent.search_jobs")
     def test_country_search_passes_location_param(self, mock_search: MagicMock):
         mock_search.return_value = [self._make_job("Dev")]
 
@@ -246,7 +246,7 @@ class TestSearchAllQueries:
         actual_query = mock_search.call_args[0][0]
         assert "Deutschland" in actual_query
 
-    @patch("stellenscout.search_agent.search_jobs")
+    @patch("immermatch.search_agent.search_jobs")
     def test_stops_early_when_min_unique_jobs_reached(self, mock_search: MagicMock):
         mock_search.return_value = [self._make_job("Unique Job")]
 
@@ -263,7 +263,7 @@ class TestSearchAllQueries:
 
 
 class TestLlmJsonRecovery:
-    @patch("stellenscout.search_agent.call_gemini")
+    @patch("immermatch.search_agent.call_gemini")
     def test_profile_candidate_retries_after_invalid_json(self, mock_call_gemini: MagicMock):
         valid_profile = {
             "skills": ["Python", "SQL"],
@@ -294,7 +294,7 @@ class TestLlmJsonRecovery:
         assert result.experience_level == "Mid"
         assert mock_call_gemini.call_count == 2
 
-    @patch("stellenscout.search_agent.call_gemini")
+    @patch("immermatch.search_agent.call_gemini")
     def test_generate_search_queries_retries_after_invalid_json(self, mock_call_gemini: MagicMock):
         profile = CandidateProfile(
             skills=["Python"],
@@ -316,7 +316,7 @@ class TestLlmJsonRecovery:
         assert queries == ["python developer berlin", "backend berlin"]
         assert mock_call_gemini.call_count == 2
 
-    @patch("stellenscout.search_agent.call_gemini")
+    @patch("immermatch.search_agent.call_gemini")
     def test_profile_candidate_raises_after_all_retries_exhausted(self, mock_call_gemini: MagicMock):
         mock_call_gemini.side_effect = ["not json", "still not json", "also not json"]
 
@@ -325,7 +325,7 @@ class TestLlmJsonRecovery:
 
         assert mock_call_gemini.call_count == 3
 
-    @patch("stellenscout.search_agent.call_gemini")
+    @patch("immermatch.search_agent.call_gemini")
     def test_generate_search_queries_returns_empty_list_after_all_retries_fail(self, mock_call_gemini: MagicMock):
         profile = CandidateProfile(
             skills=["Python"],
@@ -347,7 +347,7 @@ class TestLlmJsonRecovery:
         assert queries == []
         assert mock_call_gemini.call_count == 2
 
-    @patch("stellenscout.search_agent.call_gemini")
+    @patch("immermatch.search_agent.call_gemini")
     def test_profile_candidate_retries_after_validation_error(self, mock_call_gemini: MagicMock):
         base_profile = {
             "skills": ["Python", "SQL"],
@@ -381,7 +381,7 @@ class TestLlmJsonRecovery:
         assert result.experience_level == "Mid"
         assert mock_call_gemini.call_count == 2
 
-    @patch("stellenscout.search_agent.call_gemini")
+    @patch("immermatch.search_agent.call_gemini")
     def test_profile_candidate_retries_when_json_is_not_dict(self, mock_call_gemini: MagicMock):
         valid_profile = {
             "skills": ["Python", "SQL"],

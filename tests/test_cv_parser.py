@@ -1,10 +1,10 @@
-"""Tests for stellenscout.cv_parser — text extraction and cleaning."""
+"""Tests for immermatch.cv_parser — text extraction and cleaning."""
 
 from pathlib import Path
 
 import pytest
 
-from stellenscout.cv_parser import _clean_text, extract_text
+from immermatch.cv_parser import _clean_text, extract_text
 
 
 class TestCleanText:

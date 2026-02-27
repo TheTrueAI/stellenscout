@@ -26,7 +26,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-stellenscout.egg-info/
+immermatch.egg-info/
 
 # IDE
 .idea/
@@ -42,7 +42,7 @@ Thumbs.db
 *.pdf
 output/
 *cv*.md
-.stellenscout_cache/
+.immermatch_cache/
 
 # Streamlit secrets (contains API keys)
 .streamlit/secrets.toml

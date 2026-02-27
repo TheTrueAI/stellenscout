@@ -1,4 +1,4 @@
-# StellenScout — Next Steps Roadmap
+# Immermatch — Next Steps Roadmap
 
 Based on the current state (private repo, hosted on Streamlit Community Cloud) and the goals outlined in AGENTS.md, here's a prioritized plan:
 
@@ -41,7 +41,7 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 - [x] **Test the full digest cycle** — subscribe, verify, receive digest, unsubscribe
 - [x] **Create a welcome email after successful subscription** — explain what to expect, how to contact support, link to privacy policy, show some example matches
 - [x] **Add unsubscribe link to digest emails** — include unique tokenized URL to securely identify subscriber without exposing email
-- [x] **Make digest email prettier** — use HTML formatting, add Stellenscout logo, style job listings for better readability
+- [x] **Make digest email prettier** — use HTML formatting, add Immermatch logo, style job listings for better readability
 
 ### 1.3 — UX Quick Wins
 - [ ] **Personalize the UI** — greet user by first name extracted from CV profile
@@ -75,7 +75,7 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 
 ### 2.3 — Migrate Off Streamlit Community Cloud
 - [ ] **Move to a VPS or PaaS** — Railway, Fly.io, or Hetzner (Streamlit Cloud has no custom domain, no Stripe webhooks, limited control)
-- [ ] **Custom domain** — e.g., `stellenscout.de` or `stellenscout.eu`
+- [ ] **Custom domain** — e.g., `immermatch.de` or `immermatch.eu`
 - [ ] **Reverse proxy** — Caddy or nginx with automatic HTTPS
 - [ ] **Docker Compose setup** — `app`, `daily-task` (cron), `postgres` (or keep Supabase)
 

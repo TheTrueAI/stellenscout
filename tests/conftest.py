@@ -1,10 +1,10 @@
-"""Shared pytest fixtures for StellenScout tests."""
+"""Shared pytest fixtures for Immermatch tests."""
 
 from pathlib import Path
 
 import pytest
 
-from stellenscout.models import (
+from immermatch.models import (
     ApplyOption,
     CandidateProfile,
     EducationEntry,

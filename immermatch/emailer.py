@@ -1,4 +1,4 @@
-"""Email module using Resend for StellenScout daily digests."""
+"""Email module using Resend for Immermatch daily digests."""
 
 import os
 from datetime import datetime, timezone
@@ -69,7 +69,7 @@ def _impressum_line() -> str:
     address = _esc(os.environ.get("IMPRESSUM_ADDRESS", "").replace("\n", ", "))
     email = _esc(os.environ.get("IMPRESSUM_EMAIL", ""))
     parts = [p for p in (name, address, email) if p]
-    return " · ".join(parts) if parts else "StellenScout"
+    return " · ".join(parts) if parts else "Immermatch"
 
 
 def _build_html(jobs: list[dict], unsubscribe_url: str = "", target_location: str = "") -> str:
@@ -114,7 +114,7 @@ def _build_html(jobs: list[dict], unsubscribe_url: str = "", target_location: st
     <!-- Header -->
     <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);
                 padding:24px;color:#fff;text-align:center">
-      <h1 style="margin:0;font-size:22px">&#128270; StellenScout Daily Digest</h1>
+      <h1 style="margin:0;font-size:22px">&#128270; Immermatch Daily Digest</h1>
       <p style="margin:4px 0 0;opacity:.85;font-size:14px">{today}</p>
       {location_subtitle}
     </div>
@@ -138,7 +138,7 @@ def _build_html(jobs: list[dict], unsubscribe_url: str = "", target_location: st
     <div style="padding:16px 24px;background:#f9fafb;
                 border-top:1px solid #e5e7eb;text-align:center;
                 color:#9ca3af;font-size:12px">
-      <p style="margin:0 0 8px">You're receiving this because you subscribed to StellenScout.</p>
+      <p style="margin:0 0 8px">You're receiving this because you subscribed to Immermatch.</p>
       {impressum}
       {f'<br><a href="{_safe_url(unsubscribe_url)}" style="color:#9ca3af">Unsubscribe</a>' if unsubscribe_url else ""}
     </div>
@@ -175,12 +175,12 @@ def send_daily_digest(
 
     resend.api_key = api_key
 
-    from_addr = os.environ.get("RESEND_FROM", "StellenScout <digest@stellenscout.dev>")
+    from_addr = os.environ.get("RESEND_FROM", "Immermatch <digest@immermatch.dev>")
 
     params: dict = {
         "from": from_addr,
         "to": [user_email],
-        "subject": f"StellenScout: {len(jobs)} new job match{'es' if len(jobs) != 1 else ''} for you",
+        "subject": f"Immermatch: {len(jobs)} new job match{'es' if len(jobs) != 1 else ''} for you",
         "html": _build_html(jobs, unsubscribe_url=unsubscribe_url, target_location=target_location),
     }
     if unsubscribe_url:
@@ -219,7 +219,7 @@ def send_welcome_email(
         raise ValueError("RESEND_API_KEY environment variable not set")
 
     resend.api_key = api_key
-    from_addr = os.environ.get("RESEND_FROM", "StellenScout <digest@stellenscout.dev>")
+    from_addr = os.environ.get("RESEND_FROM", "Immermatch <digest@immermatch.dev>")
     impressum = _impressum_line()
 
     safe_location = _esc(target_location)
@@ -250,7 +250,7 @@ def send_welcome_email(
     <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);
                 padding:32px 24px;color:#fff;text-align:center">
       <div style="font-size:36px;margin-bottom:8px">&#127881;</div>
-      <h1 style="margin:0;font-size:24px">Welcome to StellenScout</h1>
+      <h1 style="margin:0;font-size:24px">Welcome to Immermatch</h1>
       <p style="margin:8px 0 0;opacity:.85;font-size:15px">Your subscription is confirmed</p>
     </div>
     <div style="padding:24px">
@@ -283,7 +283,7 @@ def send_welcome_email(
     params: dict = {
         "from": from_addr,
         "to": [email],
-        "subject": "Welcome to StellenScout \u2014 your daily digest starts tomorrow",
+        "subject": "Welcome to Immermatch \u2014 your daily digest starts tomorrow",
         "html": html,
     }
     if unsubscribe_url:
@@ -310,7 +310,7 @@ def send_verification_email(email: str, verify_url: str) -> dict:  # type: ignor
         raise ValueError("RESEND_API_KEY environment variable not set")
 
     resend.api_key = api_key
-    from_addr = os.environ.get("RESEND_FROM", "StellenScout <digest@stellenscout.dev>")
+    from_addr = os.environ.get("RESEND_FROM", "Immermatch <digest@immermatch.dev>")
     impressum = _impressum_line()
 
     html = f"""\
@@ -325,7 +325,7 @@ def send_verification_email(email: str, verify_url: str) -> dict:  # type: ignor
     <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);
                 padding:32px 24px;color:#fff;text-align:center">
       <div style="font-size:36px;margin-bottom:8px">&#128270;</div>
-      <h1 style="margin:0;font-size:24px">StellenScout</h1>
+      <h1 style="margin:0;font-size:24px">Immermatch</h1>
       <p style="margin:8px 0 0;opacity:.85;font-size:15px">One click to activate your daily job digest</p>
     </div>
     <div style="padding:24px">
@@ -371,7 +371,7 @@ def send_verification_email(email: str, verify_url: str) -> dict:  # type: ignor
         {
             "from": from_addr,
             "to": [email],
-            "subject": "StellenScout: Please confirm your email address",
+            "subject": "Immermatch: Please confirm your email address",
             "html": html,
         }
     )
