@@ -46,7 +46,7 @@ jobs:
           cache: pip
       - run: pip install -e ".[test]"
       - name: Tests
-        run: pytest -v --cov=immermatch --cov-report=term
+        run: pytest -v --cov=immermatch --cov-report=term --cov-fail-under=50
 
   audit:
     runs-on: ubuntu-latest
