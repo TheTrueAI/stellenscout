@@ -544,6 +544,12 @@ source .venv/bin/activate
 # All:     ruff check . && mypy . && pytest tests/ -x -q
 ```
 
+**IMPORTANT:** After every code change, run the check suite **without asking for permission** — just do it:
+```bash
+source .venv/bin/activate && pytest tests/ -x -q && ruff check . && mypy .
+```
+Do not ask the user "Shall I run the tests?" — always run them automatically.
+
 ### Conventions for AI agents
 
 - **Always activate the virtual environment** (`source .venv/bin/activate`) before running any command (`pytest`, `ruff`, `mypy`, `streamlit`, etc.). The project's dependencies are installed only in `.venv`.

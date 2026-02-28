@@ -11,6 +11,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+.coverage
 build/
 develop-eggs/
 dist/
@@ -41,7 +42,7 @@ Thumbs.db
 # Project specific
 *.pdf
 output/
-*cv*.md
+total_cv.md
 .immermatch_cache/
 
 # Streamlit secrets (contains API keys)
