@@ -8,7 +8,7 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 
 ### 0.1 — Testing & CI
 - [x] **Write unit tests** for core modules: `llm.py`, `cache.py`, `cv_parser.py`, `db.py`, `search_agent.py`, `evaluator_agent.py` (mock API calls) — 146 tests across 9 test files
-- [ ] **Write integration tests** for the full pipeline (profile → queries → search → evaluate → summary) using fixture CVs
+- [x] **Write integration tests** for the full pipeline (profile → queries → search → evaluate → summary) using fixture CVs — 11 tests in `tests/test_integration.py` with tech + sustainability CV fixtures
 - [x] **Set up GitHub Actions CI** — run `pytest` on every push/PR, lint with `ruff`
 - [x] **Add type checking** — run `mypy` in CI (Pydantic models already help here)
 

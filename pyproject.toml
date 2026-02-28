@@ -51,6 +51,7 @@ include = ["immermatch*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["integration: Full pipeline integration tests (profile → queries → search → evaluate → summary)"]
 
 [tool.ruff]
 target-version = "py310"
