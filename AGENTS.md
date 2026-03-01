@@ -210,8 +210,8 @@ BASE_DELAY = 3  # seconds, exponential backoff with jitter
 BA_BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
 BA_API_KEY = "jobboerse-jobsuche"  # pragma: allowlist secret  # public API key, not a secret
 # Search endpoint: /pc/v4/jobs (params: was, wo, veroeffentlichtseit, size, page, angebotsart)
-# Detail endpoint: /pc/v2/jobdetails/{hashID}
-# Default: veroeffentlichtseit=7 (last 7 days only)
+# Detail endpoint: /pc/v4/jobdetails/{refnr}
+# Default: veroeffentlichtseit=28 (last 28 days only)
 
 # SerpApi Google Jobs parameters (retained for future non-German markets)
 SERPAPI_PARAMS = {
@@ -503,7 +503,7 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 | `test_llm.py` (12 tests) | `llm.py` | `parse_json()` (8 cases: raw, fenced, embedded, nested, errors) + `call_gemini()` retry logic (4 cases: success, ServerError retry, 429 retry, non-429 immediate raise) |
 | `test_evaluator_agent.py` (8 tests) | `evaluator_agent.py` | `evaluate_job()` (4 cases: happy path, API error fallback, parse error fallback, non-dict fallback) + `evaluate_all_jobs()` (3 cases: sorted output, progress callback, empty list) + `generate_summary()` (2 cases: score distribution in prompt, missing skills in prompt) |
 | `test_search_agent.py` (35 tests) | `search_agent.py` | `_is_remote_only()` (remote tokens, non-remote) + `_infer_gl()` (known locations, unknown default, remote returns None, case insensitive) + `_localise_query()` (city names, country names, case insensitive, multiple cities) + `_parse_job_results()` (valid, blocked portals, mixed, empty, no-apply-links) + `search_all_queries()` (provider delegation, dedup, early stopping, callbacks, default provider) + `generate_search_queries()` prompt selection (BA vs SerpApi) + `TestLlmJsonRecovery` (profile_candidate and generate_search_queries retry/recovery) |
-| `test_bundesagentur.py` (22 tests) | `bundesagentur.py` | `_build_ba_link()`, `_parse_location()`, `_parse_search_results()`, `_stub_to_listing()`, `BundesagenturProvider.search()` (basic merge, pagination, HTTP errors, empty results, detail fetch failures), `SearchProvider` protocol conformance |
+| `test_bundesagentur.py` (22 tests) | `bundesagentur.py` | `_build_ba_link()`, `_parse_location()`, `_parse_search_results()`, `_parse_listing()`, `BundesagenturProvider.search()` (basic merge, pagination, HTTP errors, empty results, detail fetch failures), `SearchProvider` protocol conformance |
 | `test_cache.py` (17 tests) | `cache.py` | All cache operations: profile, queries, jobs (merge/dedup), evaluations, unevaluated job filtering |
 | `test_cv_parser.py` (6 tests) | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
 | `test_models.py` (23 tests) | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
