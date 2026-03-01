@@ -33,6 +33,17 @@ from .serpapi_provider import search_jobs  # noqa: F401
 logger = logging.getLogger(__name__)
 _MIN_JOBS_PER_PROVIDER = 30
 
+
+def _provider_quota_source_key(provider: SearchProvider) -> str:
+    """Return a stable source key for per-provider quota accounting."""
+    source_id = getattr(provider, "source_id", None)
+    if isinstance(source_id, str) and source_id.strip():
+        return source_id.strip().lower()
+    if getattr(provider, "name", None) == "Bundesagentur für Arbeit":
+        return "bundesagentur"
+    return type(provider).__name__.lower()
+
+
 # System prompt for the Profiler agent
 PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep knowledge of European job markets.
 You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
@@ -317,10 +328,8 @@ def search_all_queries(
 
     quota_sources: set[str] = set()
     if isinstance(provider, CombinedSearchProvider):
-        quota_sources = {
-            "bundesagentur" if p.name == "Bundesagentur für Arbeit" else "serpapi" for p in provider.providers
-        }
-        if quota_sources:
+        quota_sources = {_provider_quota_source_key(p) for p in provider.providers}
+        if quota_sources and min_unique_jobs > 0:
             min_unique_jobs = max(min_unique_jobs, _MIN_JOBS_PER_PROVIDER * len(quota_sources))
 
     all_jobs: dict[str, JobListing] = {}  # Use title+company+location as key for dedup

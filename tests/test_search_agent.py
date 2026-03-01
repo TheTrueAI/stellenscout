@@ -1,6 +1,7 @@
 """Tests for immermatch.search_agent — pure helper functions and search_all_queries orchestration."""
 
 import json
+from typing import ClassVar
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -11,6 +12,7 @@ from immermatch.search_agent import (
     _is_remote_only,
     _localise_query,
     _parse_job_results,
+    _provider_quota_source_key,
     generate_search_queries,
     profile_candidate,
     search_all_queries,
@@ -358,6 +360,52 @@ class TestSearchAllQueries:
 
         ba_provider.search.assert_not_called()
         serp_provider.search.assert_called_once_with("Python Developer Berlin", "Berlin", max_results=10)
+
+    def test_provider_quota_source_key_prefers_source_id(self):
+        class ThirdProvider:
+            name: ClassVar[str] = "Third Provider"
+            source_id: ClassVar[str] = "third-source"
+
+        ba_provider = MagicMock()
+        ba_provider.name = "Bundesagentur für Arbeit"
+
+        serp_provider = MagicMock()
+        serp_provider.name = "SerpApi (Google Jobs)"
+        serp_provider.source_id = "serpapi"
+
+        third_provider = ThirdProvider()
+
+        assert _provider_quota_source_key(ba_provider) == "bundesagentur"
+        assert _provider_quota_source_key(serp_provider) == "serpapi"
+        assert _provider_quota_source_key(third_provider) == "third-source"
+
+    def test_min_unique_zero_does_not_enable_combined_quota(self):
+        ba_provider = MagicMock()
+        ba_provider.name = "Bundesagentur für Arbeit"
+        ba_provider.source_id = "bundesagentur"
+        ba_jobs = [self._make_job(f"BA {i}", company=f"BA Co {i}", location="Berlin") for i in range(10)]
+        for job in ba_jobs:
+            job.source = "bundesagentur"
+        ba_provider.search.return_value = ba_jobs
+
+        serp_provider = MagicMock()
+        serp_provider.name = "SerpApi (Google Jobs)"
+        serp_provider.source_id = "serpapi"
+        serp_jobs = [self._make_job(f"SERP {i}", company=f"SERP Co {i}", location="Berlin") for i in range(10)]
+        for job in serp_jobs:
+            job.source = "serpapi"
+        serp_provider.search.return_value = serp_jobs
+
+        combined = CombinedSearchProvider([ba_provider, serp_provider])
+        results = search_all_queries(
+            queries=["q1", "q2"],
+            jobs_per_query=10,
+            location="Berlin",
+            min_unique_jobs=0,
+            provider=combined,
+        )
+
+        assert len(results) == 10
 
 
 class TestLlmJsonRecovery:

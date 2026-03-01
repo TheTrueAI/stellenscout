@@ -8,6 +8,7 @@ search-engine-agnostic.
 from __future__ import annotations
 
 import logging
+import math
 import os
 from typing import Protocol, runtime_checkable
 
@@ -93,8 +94,11 @@ class CombinedSearchProvider:
                 )
                 providers = self.providers
 
+        if max_results <= 0:
+            return []
+
         merged: dict[str, JobListing] = {}
-        per_provider = max(1, max_results)
+        per_provider = max(1, math.ceil(max_results / len(providers)))
         for provider in providers:
             try:
                 jobs = provider.search(clean_query, location, max_results=per_provider)
