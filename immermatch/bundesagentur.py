@@ -3,12 +3,21 @@
 Accesses the free, public REST API of Germany's Federal Employment Agency
 to search the largest verified job database in the country.
 
+Search uses the ``/pc/v4/jobs`` JSON API (X-API-Key auth).  Full job
+descriptions are extracted from the server-side-rendered public detail
+pages (``arbeitsagentur.de/jobsuche/jobdetail/{refnr}``) where Angular
+embeds a ``<script id="ng-state">`` JSON blob containing the complete
+listing data.
+
 API docs: https://jobsuche.api.bund.dev/
 """
 
 from __future__ import annotations
 
+import html as html_mod
+import json
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -32,10 +41,16 @@ _DEFAULT_DAYS_PUBLISHED = 7
 _MAX_RETRIES = 3
 _BASE_DELAY = 2  # seconds
 
+# Regex to extract the Angular SSR state from the detail page.
+_NG_STATE_RE = re.compile(
+    r'<script\s+id="ng-state"\s+type="application/json">(.*?)</script>',
+    re.DOTALL,
+)
 
-def _build_ba_link(hash_id: str) -> str:
+
+def _build_ba_link(refnr: str) -> str:
     """Construct the public Arbeitsagentur URL for a listing."""
-    return f"https://www.arbeitsagentur.de/jobsuche/suche?id={hash_id}"
+    return f"https://www.arbeitsagentur.de/jobsuche/jobdetail/{refnr}"
 
 
 def _parse_location(arbeitsort: dict) -> str:
@@ -53,99 +68,123 @@ def _parse_location(arbeitsort: dict) -> str:
     return ", ".join(parts) if parts else "Germany"
 
 
-def _parse_search_results(data: dict) -> list[_JobStub]:
-    """Parse the search endpoint response into lightweight stubs."""
-    stubs: list[_JobStub] = []
-    for item in data.get("stellenangebote", []):
-        hash_id = item.get("hashId", "")
-        if not hash_id:
-            continue
-        arbeitsort = item.get("arbeitsort", {})
-        stubs.append(
-            _JobStub(
-                hash_id=hash_id,
-                title=item.get("beruf", item.get("titel", "Unknown")),
-                company_name=item.get("arbeitgeber", "Unknown"),
-                location=_parse_location(arbeitsort),
-                posted_at=item.get("aktuelleVeroeffentlichungsdatum", ""),
-                refnr=item.get("refnr", ""),
-            )
-        )
-    return stubs
+def _clean_html(raw: str) -> str:
+    """Strip HTML tags and decode entities, collapse whitespace."""
+    text = html_mod.unescape(raw)
+    text = re.sub(r"<[^>]+>", " ", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 
-class _JobStub:
-    """Minimal data from the search endpoint before detail-fetching."""
-
-    __slots__ = ("hash_id", "title", "company_name", "location", "posted_at", "refnr")
-
-    def __init__(
-        self,
-        hash_id: str,
-        title: str,
-        company_name: str,
-        location: str,
-        posted_at: str,
-        refnr: str,
-    ) -> None:
-        self.hash_id = hash_id
-        self.title = title
-        self.company_name = company_name
-        self.location = location
-        self.posted_at = posted_at
-        self.refnr = refnr
+# ------------------------------------------------------------------
+# Detail page scraping
+# ------------------------------------------------------------------
 
 
-def _fetch_job_details(client: httpx.Client, hash_id: str) -> dict:
-    """Fetch full job details for a single listing (with retry)."""
-    url = f"{_BASE_URL}/pc/v2/jobdetails/{hash_id}"
+def _fetch_detail(client: httpx.Client, refnr: str) -> dict:
+    """Fetch the public detail page and extract the ng-state JSON.
+
+    Returns the ``jobdetail`` dict on success, or ``{}`` on any failure.
+    """
+    url = _build_ba_link(refnr)
     last_exc: Exception | None = None
     for attempt in range(_MAX_RETRIES):
         try:
             resp = client.get(url)
             if resp.status_code == 200:
-                return resp.json()  # type: ignore[no-any-return]
+                match = _NG_STATE_RE.search(resp.text)
+                if match:
+                    state = json.loads(match.group(1))
+                    return state.get("jobdetail", {})  # type: ignore[no-any-return]
+                logger.debug("BA detail %s: ng-state not found in HTML", refnr)
+                return {}
             if resp.status_code in {429, 500, 502, 503}:
                 delay = _BASE_DELAY * (2**attempt)
-                logger.warning("BA detail %s returned %s, retrying in %ss", hash_id, resp.status_code, delay)
+                logger.warning(
+                    "BA detail page %s returned %s, retrying in %ss",
+                    refnr,
+                    resp.status_code,
+                    delay,
+                )
                 time.sleep(delay)
                 continue
-            # 404 or other client error → give up immediately
-            logger.debug("BA detail %s returned %s, skipping", hash_id, resp.status_code)
+            logger.debug("BA detail page %s returned %s, skipping", refnr, resp.status_code)
             return {}
         except httpx.HTTPError as exc:
             last_exc = exc
             delay = _BASE_DELAY * (2**attempt)
-            logger.warning("BA detail %s network error: %s, retrying in %ss", hash_id, exc, delay)
+            logger.warning("BA detail %s network error: %s, retrying in %ss", refnr, exc, delay)
             time.sleep(delay)
     if last_exc:
-        logger.error("BA detail %s failed after %d retries: %s", hash_id, _MAX_RETRIES, last_exc)
+        logger.error("BA detail %s failed after %d retries: %s", refnr, _MAX_RETRIES, last_exc)
     return {}
 
 
-def _stub_to_listing(stub: _JobStub, details: dict) -> JobListing:
-    """Merge a search stub with its full details into a ``JobListing``."""
-    description = details.get("stellenbeschreibung", "")
-    link = _build_ba_link(stub.hash_id)
+# ------------------------------------------------------------------
+# Search result parsing
+# ------------------------------------------------------------------
 
+
+def _parse_listing(item: dict, detail: dict | None = None) -> JobListing | None:
+    """Convert a search-result item (+ optional detail) into a :class:`JobListing`.
+
+    Returns ``None`` when the item lacks a ``refnr`` (the unique job ID).
+    """
+    refnr = item.get("refnr", "")
+    if not refnr:
+        return None
+
+    arbeitsort = item.get("arbeitsort", {})
+    link = _build_ba_link(refnr)
+
+    titel = item.get("titel", "")
+    beruf = item.get("beruf", "")
+    arbeitgeber = item.get("arbeitgeber", "")
+    ort = _parse_location(arbeitsort)
+
+    # Prefer the rich description from the detail page when available.
+    description = ""
+    if detail:
+        raw_desc = detail.get("stellenangebotsBeschreibung", "")
+        if raw_desc:
+            description = _clean_html(raw_desc)
+
+    # Fallback: build a minimal description from search fields.
+    if not description:
+        parts: list[str] = []
+        if beruf and beruf != titel:
+            parts.append(f"Beruf: {beruf}")
+        if arbeitgeber:
+            parts.append(f"Arbeitgeber: {arbeitgeber}")
+        if ort:
+            parts.append(f"Standort: {ort}")
+        description = "\n".join(parts)
+
+    # Build apply options — always include the Arbeitsagentur page link,
+    # plus an external career-site link when available in the detail data.
     apply_options = [ApplyOption(source="Arbeitsagentur", url=link)]
-    if external_url := details.get("allianzPartnerUrl"):
-        apply_options.append(ApplyOption(source="Company Website", url=external_url))
-
-    # Prefer the more specific title from details when available
-    title = details.get("titel", stub.title) or stub.title
-    company = details.get("arbeitgeber", stub.company_name) or stub.company_name
+    if detail:
+        ext_url = detail.get("allianzpartnerUrl", "")
+        if ext_url:
+            if not ext_url.startswith("http"):
+                ext_url = f"https://{ext_url}"
+            ext_name = detail.get("allianzpartnerName", "Company Website")
+            apply_options.append(ApplyOption(source=ext_name, url=ext_url))
 
     return JobListing(
-        title=title,
-        company_name=company,
-        location=stub.location,
+        title=titel or beruf or "Unknown",
+        company_name=arbeitgeber or "Unknown",
+        location=ort,
         description=description,
         link=link,
-        posted_at=stub.posted_at,
+        posted_at=item.get("aktuelleVeroeffentlichungsdatum", ""),
         source="bundesagentur",
         apply_options=apply_options,
     )
+
+
+def _parse_search_results(data: dict) -> list[dict]:
+    """Return the raw search-result items (dicts) that have a ``refnr``."""
+    return [item for item in data.get("stellenangebote", []) if item.get("refnr")]
 
 
 class BundesagenturProvider:
@@ -159,7 +198,7 @@ class BundesagenturProvider:
     def __init__(
         self,
         days_published: int = _DEFAULT_DAYS_PUBLISHED,
-        detail_workers: int = 10,
+        detail_workers: int = 5,
     ) -> None:
         self._days_published = days_published
         self._detail_workers = detail_workers
@@ -182,31 +221,36 @@ class BundesagenturProvider:
             max_results: Upper bound on total results.
 
         Returns:
-            List of ``JobListing`` objects with descriptions fetched from
-            the detail endpoint.
+            List of ``JobListing`` objects.  When possible, descriptions
+            are scraped from the public detail pages; otherwise a minimal
+            fallback description is built from the search data.
         """
-        stubs = self._search_stubs(query, location, max_results)
-        if not stubs:
+        if not query or not query.strip():
+            logger.debug("Skipping BA search: empty query")
             return []
-        return self._enrich_stubs(stubs)
+
+        items = self._search_items(query, location, max_results)
+        if not items:
+            return []
+        return self._enrich(items)
 
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _search_stubs(
+    def _search_items(
         self,
         query: str,
         location: str,
         max_results: int,
-    ) -> list[_JobStub]:
-        """Paginate through the search endpoint and collect stubs."""
+    ) -> list[dict]:
+        """Paginate through the search endpoint and collect raw items."""
         page_size = min(max_results, 50)  # BA allows up to 100, 50 is safe
-        stubs: list[_JobStub] = []
-        page = 0
+        items: list[dict] = []
+        page = 1  # BA API pages are 1-indexed
 
         with httpx.Client(headers=_DEFAULT_HEADERS, timeout=30) as client:
-            while len(stubs) < max_results:
+            while len(items) < max_results:
                 params: dict[str, str | int] = {
                     "was": query,
                     "size": page_size,
@@ -222,35 +266,47 @@ class BundesagenturProvider:
                     break
 
                 data = resp.json()
-                page_stubs = _parse_search_results(data)
-                if not page_stubs:
+                page_items = _parse_search_results(data)
+                if not page_items:
                     break
 
-                stubs.extend(page_stubs)
+                items.extend(page_items)
                 total = int(data.get("maxErgebnisse", 0))
-                if len(stubs) >= total or len(stubs) >= max_results:
+                if len(items) >= total or len(items) >= max_results:
                     break
 
                 page += 1
 
-        return stubs[:max_results]
+        return items[:max_results]
 
-    def _enrich_stubs(self, stubs: list[_JobStub]) -> list[JobListing]:
-        """Batch-fetch full details and convert stubs to listings."""
-        listings: list[JobListing] = []
-
-        with httpx.Client(headers=_DEFAULT_HEADERS, timeout=30) as client:
+    def _enrich(self, items: list[dict]) -> list[JobListing]:
+        """Fetch detail pages in parallel and build ``JobListing`` objects."""
+        # Map refnr → detail dict (fetched in parallel).
+        details: dict[str, dict] = {}
+        with httpx.Client(
+            timeout=30,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; Immermatch/1.0)",
+                "Accept": "text/html",
+            },
+            follow_redirects=True,
+        ) as client:
             with ThreadPoolExecutor(max_workers=self._detail_workers) as pool:
-                future_to_stub = {pool.submit(_fetch_job_details, client, stub.hash_id): stub for stub in stubs}
-                for future in as_completed(future_to_stub):
-                    stub = future_to_stub[future]
+                future_to_refnr = {pool.submit(_fetch_detail, client, item["refnr"]): item["refnr"] for item in items}
+                for future in as_completed(future_to_refnr):
+                    refnr = future_to_refnr[future]
                     try:
-                        details = future.result()
+                        details[refnr] = future.result()
                     except Exception:
-                        logger.exception("Failed to fetch details for %s", stub.hash_id)
-                        details = {}
-                    listings.append(_stub_to_listing(stub, details))
+                        logger.exception("Failed to fetch detail for %s", refnr)
+                        details[refnr] = {}
 
+        listings: list[JobListing] = []
+        for item in items:
+            refnr = item["refnr"]
+            listing = _parse_listing(item, detail=details.get(refnr))
+            if listing is not None:
+                listings.append(listing)
         return listings
 
     @staticmethod

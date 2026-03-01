@@ -2,15 +2,19 @@
 
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
+
+import httpx
 
 from immermatch.bundesagentur import (
     BundesagenturProvider,
     _build_ba_link,
-    _JobStub,
+    _clean_html,
+    _fetch_detail,
+    _parse_listing,
     _parse_location,
     _parse_search_results,
-    _stub_to_listing,
 )
 
 # ---------------------------------------------------------------------------
@@ -19,18 +23,18 @@ from immermatch.bundesagentur import (
 
 
 def _make_stellenangebot(
-    hash_id: str = "abc123",
+    refnr: str = "10000-1234567890-S",
+    titel: str = "Python Entwickler (m/w/d)",
     beruf: str = "Python Entwickler",
     arbeitgeber: str = "ACME GmbH",
     ort: str = "Berlin",
     region: str = "Berlin",
     land: str = "Deutschland",
-    refnr: str = "10000-1234567890-S",
     posted: str = "2026-02-25",
 ) -> dict:
     return {
-        "hashId": hash_id,
         "beruf": beruf,
+        "titel": titel,
         "arbeitgeber": arbeitgeber,
         "refnr": refnr,
         "aktuelleVeroeffentlichungsdatum": posted,
@@ -46,24 +50,27 @@ def _make_search_response(
     return {
         "stellenangebote": items,
         "maxErgebnisse": str(total if total is not None else len(items)),
-        "page": "0",
+        "page": "1",
         "size": "50",
     }
 
 
-def _make_detail_response(
-    stellenbeschreibung: str = "Full job description here.",
-    titel: str = "Python Entwickler (m/w/d)",
-    arbeitgeber: str = "ACME GmbH",
-    allianz_url: str | None = None,
+def _make_ng_state_html(jobdetail: dict) -> str:
+    """Wrap a jobdetail dict in the Angular SSR ng-state script tag."""
+    state = {"jobdetail": jobdetail}
+    return f'<html><body><script id="ng-state" type="application/json">{json.dumps(state)}</script></body></html>'
+
+
+def _make_detail(
+    description: str = "<b>Great job</b> &amp; benefits",
+    partner_url: str = "",
+    partner_name: str = "",
 ) -> dict:
-    d: dict = {
-        "stellenbeschreibung": stellenbeschreibung,
-        "titel": titel,
-        "arbeitgeber": arbeitgeber,
-    }
-    if allianz_url:
-        d["allianzPartnerUrl"] = allianz_url
+    d: dict = {"stellenangebotsBeschreibung": description}
+    if partner_url:
+        d["allianzpartnerUrl"] = partner_url
+    if partner_name:
+        d["allianzpartnerName"] = partner_name
     return d
 
 
@@ -74,7 +81,7 @@ def _make_detail_response(
 
 class TestBuildBaLink:
     def test_simple(self) -> None:
-        assert _build_ba_link("abc123") == "https://www.arbeitsagentur.de/jobsuche/suche?id=abc123"
+        assert _build_ba_link("10000-123-S") == "https://www.arbeitsagentur.de/jobsuche/jobdetail/10000-123-S"
 
 
 class TestParseLocation:
@@ -93,21 +100,118 @@ class TestParseLocation:
         assert _parse_location({"ort": "Hamburg"}) == "Hamburg"
 
 
+class TestCleanHtml:
+    def test_strips_tags(self) -> None:
+        assert _clean_html("<b>bold</b> text") == "bold text"
+
+    def test_decodes_entities(self) -> None:
+        # &amp; → &  (plain entities are decoded)
+        assert _clean_html("AT&amp;T rocks") == "AT&T rocks"
+
+    def test_collapses_whitespace(self) -> None:
+        assert _clean_html("a   b\n\nc") == "a b c"
+
+    def test_combined(self) -> None:
+        assert _clean_html("<p>Hello &amp; world</p>  <br/>  ok") == "Hello & world ok"
+
+    def test_empty_string(self) -> None:
+        assert _clean_html("") == ""
+
+
+class TestParseListing:
+    def test_valid_item(self) -> None:
+        item = _make_stellenangebot(refnr="REF1", titel="Dev (m/w/d)", beruf="Entwickler", arbeitgeber="Co")
+        listing = _parse_listing(item)
+        assert listing is not None
+        assert listing.title == "Dev (m/w/d)"
+        assert listing.company_name == "Co"
+        assert listing.source == "bundesagentur"
+        assert "REF1" in listing.link
+        assert len(listing.apply_options) == 1
+        assert listing.apply_options[0].source == "Arbeitsagentur"
+
+    def test_description_includes_beruf_when_different_from_title(self) -> None:
+        item = _make_stellenangebot(titel="Senior Dev", beruf="Softwareentwickler")
+        listing = _parse_listing(item)
+        assert listing is not None
+        assert "Beruf: Softwareentwickler" in listing.description
+
+    def test_description_omits_beruf_when_equal_to_title(self) -> None:
+        item = _make_stellenangebot(titel="Python Dev", beruf="Python Dev")
+        listing = _parse_listing(item)
+        assert listing is not None
+        assert "Beruf:" not in listing.description
+
+    def test_missing_refnr_returns_none(self) -> None:
+        item = {"beruf": "Dev", "arbeitgeber": "Co", "arbeitsort": {}}
+        assert _parse_listing(item) is None
+
+    def test_fallback_title_from_beruf(self) -> None:
+        item = _make_stellenangebot(titel="", beruf="QA Engineer")
+        listing = _parse_listing(item)
+        assert listing is not None
+        assert listing.title == "QA Engineer"
+
+    def test_with_detail_description(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(description="<p>Full desc</p> &amp; more")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert listing.description == "Full desc & more"
+
+    def test_with_detail_empty_description_falls_back(self) -> None:
+        item = _make_stellenangebot(refnr="REF1", beruf="QA", arbeitgeber="Corp")
+        detail = {"stellenangebotsBeschreibung": ""}
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        # Falls back to search-field description
+        assert "Arbeitgeber: Corp" in listing.description
+
+    def test_with_detail_external_apply_url(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="https://careers.acme.com/apply", partner_name="ACME Careers")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert len(listing.apply_options) == 2
+        assert listing.apply_options[1].source == "ACME Careers"
+        assert listing.apply_options[1].url == "https://careers.acme.com/apply"
+
+    def test_with_detail_external_url_adds_https_prefix(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="careers.acme.com")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert listing.apply_options[1].url == "https://careers.acme.com"
+
+    def test_with_detail_external_url_default_name(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="https://example.com")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert listing.apply_options[1].source == "Company Website"
+
+    def test_with_no_detail(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        listing = _parse_listing(item, detail=None)
+        assert listing is not None
+        assert len(listing.apply_options) == 1  # Only Arbeitsagentur
+
+
 class TestParseSearchResults:
     def test_valid_items(self) -> None:
         data = _make_search_response(
             [
-                _make_stellenangebot(hash_id="a1", beruf="Dev", arbeitgeber="Co"),
-                _make_stellenangebot(hash_id="a2", beruf="QA", arbeitgeber="Co2"),
+                _make_stellenangebot(refnr="r1", beruf="Dev", arbeitgeber="Co"),
+                _make_stellenangebot(refnr="r2", beruf="QA", arbeitgeber="Co2"),
             ]
         )
-        stubs = _parse_search_results(data)
-        assert len(stubs) == 2
-        assert stubs[0].hash_id == "a1"
-        assert stubs[0].title == "Dev"
-        assert stubs[1].hash_id == "a2"
+        results = _parse_search_results(data)
+        assert len(results) == 2
+        # Returns raw dicts, not JobListing objects
+        assert results[0]["arbeitgeber"] == "Co"
+        assert results[1]["arbeitgeber"] == "Co2"
 
-    def test_skips_missing_hash(self) -> None:
+    def test_skips_missing_refnr(self) -> None:
         data = {"stellenangebote": [{"beruf": "Dev"}]}
         assert _parse_search_results(data) == []
 
@@ -116,45 +220,78 @@ class TestParseSearchResults:
         assert _parse_search_results({"stellenangebote": []}) == []
 
 
-class TestStubToListing:
-    def test_basic_merge(self) -> None:
-        stub = _JobStub(
-            hash_id="abc",
-            title="Dev",
-            company_name="Co",
-            location="Berlin",
-            posted_at="2026-02-25",
-            refnr="REF",
-        )
-        details = _make_detail_response(
-            stellenbeschreibung="Desc",
-            titel="Developer (m/w/d)",
-            arbeitgeber="Co",
-            allianz_url="https://company.de/apply",
-        )
-        listing = _stub_to_listing(stub, details)
+# ===========================================================================
+# Tests for _fetch_detail
+# ===========================================================================
 
-        assert listing.title == "Developer (m/w/d)"
-        assert listing.company_name == "Co"  # prefers detail value
-        assert listing.description == "Desc"
-        assert listing.source == "bundesagentur"
-        assert listing.link == _build_ba_link("abc")
-        assert len(listing.apply_options) == 2
-        assert listing.apply_options[0].source == "Arbeitsagentur"
-        assert listing.apply_options[1].source == "Company Website"
-        assert listing.apply_options[1].url == "https://company.de/apply"
 
-    def test_no_external_url(self) -> None:
-        stub = _JobStub("h1", "T", "C", "Loc", "2026-01-01", "R")
-        listing = _stub_to_listing(stub, _make_detail_response())
-        assert len(listing.apply_options) == 1
+class TestFetchDetail:
+    def test_extracts_ng_state(self) -> None:
+        detail = {"stellenangebotsBeschreibung": "<p>Hello</p>", "firma": "ACME"}
+        html = _make_ng_state_html(detail)
 
-    def test_empty_details_fallback(self) -> None:
-        stub = _JobStub("h1", "Title", "Company", "Loc", "2026-01-01", "R")
-        listing = _stub_to_listing(stub, {})
-        assert listing.title == "Title"
-        assert listing.company_name == "Company"
-        assert listing.description == ""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = html
+        client = MagicMock(spec=httpx.Client)
+        client.get.return_value = mock_resp
+
+        result = _fetch_detail(client, "REF-123")
+        assert result == detail
+
+    def test_missing_ng_state_returns_empty(self) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.text = "<html><body>No state here</body></html>"
+        client = MagicMock(spec=httpx.Client)
+        client.get.return_value = mock_resp
+
+        assert _fetch_detail(client, "REF-123") == {}
+
+    def test_non_200_returns_empty(self) -> None:
+        mock_resp = MagicMock()
+        mock_resp.status_code = 404
+        client = MagicMock(spec=httpx.Client)
+        client.get.return_value = mock_resp
+
+        assert _fetch_detail(client, "REF-123") == {}
+
+    def test_retries_on_server_error(self) -> None:
+        error_resp = MagicMock()
+        error_resp.status_code = 503
+
+        detail = {"stellenangebotsBeschreibung": "ok"}
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.text = _make_ng_state_html(detail)
+
+        client = MagicMock(spec=httpx.Client)
+        client.get.side_effect = [error_resp, ok_resp]
+
+        with patch("immermatch.bundesagentur.time.sleep"):
+            result = _fetch_detail(client, "REF-123")
+        assert result == detail
+
+    def test_retries_on_network_error(self) -> None:
+        detail = {"stellenangebotsBeschreibung": "recovered"}
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.text = _make_ng_state_html(detail)
+
+        client = MagicMock(spec=httpx.Client)
+        client.get.side_effect = [httpx.ConnectError("timeout"), ok_resp]
+
+        with patch("immermatch.bundesagentur.time.sleep"):
+            result = _fetch_detail(client, "REF-123")
+        assert result == detail
+
+    def test_all_retries_fail(self) -> None:
+        client = MagicMock(spec=httpx.Client)
+        client.get.side_effect = httpx.ConnectError("down")
+
+        with patch("immermatch.bundesagentur.time.sleep"):
+            result = _fetch_detail(client, "REF-123")
+        assert result == {}
 
 
 # ===========================================================================
@@ -163,44 +300,64 @@ class TestStubToListing:
 
 
 class TestBundesagenturProviderSearch:
-    """Test the full search → enrich pipeline with mocked internals."""
+    """Test the full search pipeline with mocked HTTP."""
 
     def test_search_returns_listings(self) -> None:
-        stubs = [
-            _JobStub("h1", "Dev A", "Co A", "Berlin", "2026-02-25", "REF1"),
-            _JobStub("h2", "Dev B", "Co B", "München", "2026-02-24", "REF2"),
+        items = [
+            _make_stellenangebot(refnr="r1", titel="Dev A", arbeitgeber="Co A"),
+            _make_stellenangebot(refnr="r2", titel="Dev B", arbeitgeber="Co B"),
         ]
-        detail = _make_detail_response(stellenbeschreibung="Full desc")
+        resp_data = _make_search_response(items, total=2)
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = resp_data
 
         provider = BundesagenturProvider(days_published=7)
         with (
-            patch.object(provider, "_search_stubs", return_value=stubs),
-            patch("immermatch.bundesagentur._fetch_job_details", return_value=detail),
+            patch.object(provider, "_get_with_retry", return_value=mock_resp),
+            patch.object(provider, "_enrich", side_effect=lambda it: [_parse_listing(i) for i in it]),
         ):
             jobs = provider.search("Python", "Berlin", max_results=10)
 
         assert len(jobs) == 2
         assert all(j.source == "bundesagentur" for j in jobs)
-        assert all(j.description == "Full desc" for j in jobs)
+        assert jobs[0].title == "Dev A"
+        assert jobs[1].title == "Dev B"
 
     def test_search_empty_results(self) -> None:
-        provider = BundesagenturProvider()
-        with patch.object(provider, "_search_stubs", return_value=[]):
-            jobs = provider.search("Niche Job", "Berlin")
-        assert jobs == []
-
-    def test_search_respects_max_results(self) -> None:
-        """max_results is enforced via _search_stubs truncation."""
-        stubs = [_JobStub(f"h{i}", "Dev", "Co", "Berlin", "2026-01-01", f"R{i}") for i in range(3)]
-        detail = _make_detail_response()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = _make_search_response([], total=0)
 
         provider = BundesagenturProvider()
         with (
-            patch.object(provider, "_search_stubs", return_value=stubs) as mock_stubs,
-            patch("immermatch.bundesagentur._fetch_job_details", return_value=detail),
+            patch.object(provider, "_get_with_retry", return_value=mock_resp),
+            patch.object(provider, "_enrich", side_effect=lambda it: [_parse_listing(i) for i in it]),
+        ):
+            jobs = provider.search("Niche Job", "Berlin")
+        assert jobs == []
+
+    def test_search_empty_query_returns_empty(self) -> None:
+        """Empty or whitespace-only queries are rejected before hitting the API."""
+        provider = BundesagenturProvider()
+        assert provider.search("", "Berlin") == []
+        assert provider.search("   ", "Berlin") == []
+
+    def test_search_respects_max_results(self) -> None:
+        resp_data = _make_search_response(
+            [_make_stellenangebot(refnr=f"r{i}") for i in range(5)],
+            total=5,
+        )
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = resp_data
+
+        provider = BundesagenturProvider()
+        with (
+            patch.object(provider, "_get_with_retry", return_value=mock_resp),
+            patch.object(provider, "_enrich", side_effect=lambda it: [_parse_listing(i) for i in it]),
         ):
             jobs = provider.search("Dev", "Berlin", max_results=3)
-            mock_stubs.assert_called_once_with("Dev", "Berlin", 3)
 
         assert len(jobs) == 3
 
@@ -214,11 +371,11 @@ class TestBundesagenturProviderSearch:
 
 
 class TestBundesagenturProviderPagination:
-    """Test the search-stub pagination logic with mocked HTTP."""
+    """Test pagination logic via _search_items."""
 
     def test_single_page(self) -> None:
         resp_data = _make_search_response(
-            [_make_stellenangebot(hash_id=f"h{i}") for i in range(5)],
+            [_make_stellenangebot(refnr=f"r{i}") for i in range(5)],
             total=5,
         )
         mock_resp = MagicMock()
@@ -226,19 +383,21 @@ class TestBundesagenturProviderPagination:
         mock_resp.json.return_value = resp_data
 
         provider = BundesagenturProvider()
-        with patch.object(provider, "_get_with_retry", return_value=mock_resp):
-            with patch("immermatch.bundesagentur.httpx.Client"):
-                stubs = provider._search_stubs("Dev", "Berlin", max_results=50)
+        with (
+            patch.object(provider, "_get_with_retry", return_value=mock_resp),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            items = provider._search_items("Dev", "Berlin", max_results=50)
 
-        assert len(stubs) == 5
+        assert len(items) == 5
 
     def test_multi_page(self) -> None:
-        page_0 = _make_search_response(
-            [_make_stellenangebot(hash_id=f"p0_{i}") for i in range(50)],
+        page_1 = _make_search_response(
+            [_make_stellenangebot(refnr=f"p1_{i}") for i in range(50)],
             total=60,
         )
-        page_1 = _make_search_response(
-            [_make_stellenangebot(hash_id=f"p1_{i}") for i in range(10)],
+        page_2 = _make_search_response(
+            [_make_stellenangebot(refnr=f"p2_{i}") for i in range(10)],
             total=60,
         )
         call_count = 0
@@ -248,43 +407,80 @@ class TestBundesagenturProviderPagination:
             call_count += 1
             mock_resp = MagicMock()
             mock_resp.status_code = 200
-            mock_resp.json.return_value = page_1 if params.get("page", 0) >= 1 else page_0
+            mock_resp.json.return_value = page_2 if params.get("page", 1) >= 2 else page_1
             return mock_resp
 
         provider = BundesagenturProvider()
-        with patch.object(provider, "_get_with_retry", side_effect=mock_get):
-            with patch("immermatch.bundesagentur.httpx.Client"):
-                stubs = provider._search_stubs("Dev", "Berlin", max_results=100)
+        with (
+            patch.object(provider, "_get_with_retry", side_effect=mock_get),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            items = provider._search_items("Dev", "Berlin", max_results=100)
 
-        assert len(stubs) == 60
+        assert len(items) == 60
         assert call_count == 2
 
 
 class TestBundesagenturProviderErrors:
     """Test error handling in the provider."""
 
-    def test_search_server_error_returns_empty(self) -> None:
+    def test_search_items_server_error_returns_empty(self) -> None:
         """A persistent failure from the search endpoint returns an empty list."""
         provider = BundesagenturProvider()
-        with patch.object(provider, "_get_with_retry", return_value=None):
-            with patch("immermatch.bundesagentur.httpx.Client"):
-                stubs = provider._search_stubs("Dev", "Berlin", max_results=50)
-        assert stubs == []
+        with (
+            patch.object(provider, "_get_with_retry", return_value=None),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            items = provider._search_items("Dev", "Berlin", max_results=50)
+        assert items == []
 
-    def test_detail_failure_still_returns_listing(self) -> None:
-        """If detail-fetching fails, listing still appears with empty description."""
-        stubs = [_JobStub("h1", "Python Dev", "Co", "Berlin", "2026-02-25", "REF")]
+
+class TestEnrich:
+    """Test the _enrich detail-fetching pipeline."""
+
+    def test_enriches_items_with_details(self) -> None:
+        items = [
+            _make_stellenangebot(refnr="r1", titel="Dev A"),
+            _make_stellenangebot(refnr="r2", titel="Dev B"),
+        ]
+        details = {
+            "r1": _make_detail(description="<b>Desc A</b>"),
+            "r2": _make_detail(description="<p>Desc B</p>"),
+        }
 
         provider = BundesagenturProvider()
-        with (
-            patch.object(provider, "_search_stubs", return_value=stubs),
-            patch("immermatch.bundesagentur._fetch_job_details", return_value={}),
-        ):
-            jobs = provider.search("Dev", "Berlin")
+        with patch("immermatch.bundesagentur._fetch_detail", side_effect=lambda _c, refnr: details.get(refnr, {})):
+            with patch("immermatch.bundesagentur.httpx.Client"):
+                listings = provider._enrich(items)
 
-        assert len(jobs) == 1
-        assert jobs[0].description == ""
-        assert jobs[0].title == "Python Dev"  # falls back to stub title
+        assert len(listings) == 2
+        assert listings[0].description == "Desc A"
+        assert listings[1].description == "Desc B"
+
+    def test_enrich_falls_back_on_failed_detail(self) -> None:
+        items = [_make_stellenangebot(refnr="r1", titel="Dev", arbeitgeber="Corp")]
+
+        provider = BundesagenturProvider()
+        with patch("immermatch.bundesagentur._fetch_detail", return_value={}):
+            with patch("immermatch.bundesagentur.httpx.Client"):
+                listings = provider._enrich(items)
+
+        assert len(listings) == 1
+        # Uses fallback description from search fields
+        assert "Arbeitgeber: Corp" in listings[0].description
+
+    def test_enrich_with_external_apply_url(self) -> None:
+        items = [_make_stellenangebot(refnr="r1")]
+        detail = _make_detail(partner_url="https://jobs.example.com", partner_name="Example")
+
+        provider = BundesagenturProvider()
+        with patch("immermatch.bundesagentur._fetch_detail", return_value=detail):
+            with patch("immermatch.bundesagentur.httpx.Client"):
+                listings = provider._enrich(items)
+
+        assert len(listings[0].apply_options) == 2
+        assert listings[0].apply_options[1].source == "Example"
+        assert listings[0].apply_options[1].url == "https://jobs.example.com"
 
 
 class TestSearchProviderProtocol:
