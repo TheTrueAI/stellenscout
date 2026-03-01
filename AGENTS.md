@@ -538,15 +538,15 @@ This section documents the development process and conventions for both human an
 source .venv/bin/activate
 
 # Test:    pytest tests/ -x -q
-# Lint:    ruff check . && ruff format --check .
+# Lint:    ruff check --fix . && ruff format --check .
 # Types:   mypy .
 # Run app: streamlit run immermatch/app.py
-# All:     ruff check . && mypy . && pytest tests/ -x -q
+# All:     ruff check --fix . && mypy . && pytest tests/ -x -q
 ```
 
 **IMPORTANT:** After every code change, run the check suite **without asking for permission** — just do it:
 ```bash
-source .venv/bin/activate && pytest tests/ -x -q && ruff check . && mypy .
+source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && mypy .
 ```
 Do not ask the user "Shall I run the tests?" — always run them automatically.
 
@@ -564,6 +564,7 @@ Do not ask the user "Shall I run the tests?" — always run them automatically.
 - All `st.error()` calls must show generic messages; real exceptions go to `logger.exception()`
 - Follow the test file naming convention: `tests/test_<module>.py` for `immermatch/<module>.py`
 - After implementing changes, always run `pytest tests/ -x -q` to verify nothing is broken
+- Use as much as possible external libraries and built-in functions instead of writing custom code (e.g., for date parsing, string manipulation, etc.) — this increases reliability and reduces bugs
 
 ### Development workflow
 

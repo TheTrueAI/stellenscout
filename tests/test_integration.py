@@ -331,14 +331,12 @@ def mock_client() -> MagicMock:
 class TestFullPipelineTechCV:
     """End-to-end pipeline with the tech CV (sample.md)."""
 
-    @patch("immermatch.search_agent.search_jobs")
     @patch("immermatch.evaluator_agent.call_gemini")
     @patch("immermatch.search_agent.call_gemini")
     def test_full_pipeline_happy_path(
         self,
         mock_search_gemini: MagicMock,
         mock_eval_gemini: MagicMock,
-        mock_search_jobs: MagicMock,
         mock_client: MagicMock,
         tech_cv_text: str,
     ) -> None:
@@ -347,8 +345,10 @@ class TestFullPipelineTechCV:
         # search_agent.call_gemini: 1st call → profile, 2nd call → queries
         mock_search_gemini.side_effect = [TECH_PROFILE_JSON, QUERIES_JSON]
 
-        # search_jobs returns our fixture jobs (spread across queries)
-        mock_search_jobs.side_effect = (
+        # Build a mock provider whose search() returns jobs in batches
+        mock_provider = MagicMock()
+        mock_provider.name = "test"
+        mock_provider.search.side_effect = (
             [
                 MOCK_JOBS[:2],  # query 1 → 2 jobs
                 MOCK_JOBS[2:4],  # query 2 → 2 jobs
@@ -373,7 +373,13 @@ class TestFullPipelineTechCV:
         assert len(queries) == 20
 
         # --- Act: Stage 3 — Search ---
-        jobs = search_all_queries(queries, jobs_per_query=10, location="Munich, Germany", min_unique_jobs=0)
+        jobs = search_all_queries(
+            queries,
+            jobs_per_query=10,
+            location="Munich, Germany",
+            min_unique_jobs=0,
+            provider=mock_provider,
+        )
         assert len(jobs) == 5
         assert all(isinstance(j, JobListing) for j in jobs)
 
@@ -397,14 +403,12 @@ class TestFullPipelineTechCV:
 class TestFullPipelineSustainabilityCV:
     """End-to-end pipeline with the non-tech sustainability CV."""
 
-    @patch("immermatch.search_agent.search_jobs")
     @patch("immermatch.evaluator_agent.call_gemini")
     @patch("immermatch.search_agent.call_gemini")
     def test_full_pipeline_non_tech_cv(
         self,
         mock_search_gemini: MagicMock,
         mock_eval_gemini: MagicMock,
-        mock_search_jobs: MagicMock,
         mock_client: MagicMock,
         sustainability_cv_text: str,
     ) -> None:
@@ -431,7 +435,9 @@ class TestFullPipelineSustainabilityCV:
                 apply_options=[ApplyOption(source="Company Website", url="https://sustaincorp.de/jobs/2")],
             ),
         ]
-        mock_search_jobs.side_effect = [sustainability_jobs] + [[] for _ in range(19)]
+        mock_provider = MagicMock()
+        mock_provider.name = "test"
+        mock_provider.search.side_effect = [sustainability_jobs] + [[] for _ in range(19)]
 
         eval_responses = [
             json.dumps({"score": 88, "reasoning": "Excellent CSRD/GHG match.", "missing_skills": []}),
@@ -449,7 +455,13 @@ class TestFullPipelineSustainabilityCV:
         queries = generate_search_queries(mock_client, profile, "Munich, Germany")
         assert len(queries) == 20
 
-        jobs = search_all_queries(queries, jobs_per_query=10, location="Munich, Germany", min_unique_jobs=0)
+        jobs = search_all_queries(
+            queries,
+            jobs_per_query=10,
+            location="Munich, Germany",
+            min_unique_jobs=0,
+            provider=mock_provider,
+        )
         assert len(jobs) == 2
 
         evaluated = evaluate_all_jobs(mock_client, profile, jobs, max_workers=2)
@@ -533,11 +545,7 @@ class TestQueryGeneration:
 class TestSearchDeduplication:
     """Verify search_all_queries deduplicates overlapping results."""
 
-    @patch("immermatch.search_agent.search_jobs")
-    def test_duplicate_jobs_across_queries_are_merged(
-        self,
-        mock_search_jobs: MagicMock,
-    ) -> None:
+    def test_duplicate_jobs_across_queries_are_merged(self) -> None:
         """Jobs with the same title+company from different queries appear only once."""
         duplicate_job = JobListing(
             title="Senior Python Developer",
@@ -557,7 +565,9 @@ class TestSearchDeduplication:
         )
 
         # Three queries all return the same duplicate + one unique in the second
-        mock_search_jobs.side_effect = [
+        mock_provider = MagicMock()
+        mock_provider.name = "test"
+        mock_provider.search.side_effect = [
             [duplicate_job],
             [duplicate_job, unique_job],
             [duplicate_job],
@@ -568,6 +578,7 @@ class TestSearchDeduplication:
             jobs_per_query=10,
             location="Munich, Germany",
             min_unique_jobs=0,
+            provider=mock_provider,
         )
 
         assert len(jobs) == 2
@@ -659,26 +670,33 @@ class TestEmptySearchResults:
     """Verify the pipeline handles empty search results gracefully."""
 
     @patch("immermatch.evaluator_agent.call_gemini")
-    @patch("immermatch.search_agent.search_jobs")
     @patch("immermatch.search_agent.call_gemini")
     def test_empty_search_produces_empty_evaluations(
         self,
         mock_search_gemini: MagicMock,
-        mock_search_jobs: MagicMock,
         mock_eval_gemini: MagicMock,
         mock_client: MagicMock,
         tech_cv_text: str,
     ) -> None:
         """When search returns no jobs, evaluate and summary still work."""
         mock_search_gemini.side_effect = [TECH_PROFILE_JSON, QUERIES_JSON]
-        # All searches return empty
-        mock_search_jobs.return_value = []
         # Summary for empty results
         mock_eval_gemini.return_value = "No strong matches found. Consider broadening your search."
 
+        # All searches return empty
+        mock_provider = MagicMock()
+        mock_provider.name = "test"
+        mock_provider.search.return_value = []
+
         profile = profile_candidate(mock_client, tech_cv_text)
         queries = generate_search_queries(mock_client, profile, "Munich, Germany")
-        jobs = search_all_queries(queries, jobs_per_query=10, location="Munich, Germany", min_unique_jobs=0)
+        jobs = search_all_queries(
+            queries,
+            jobs_per_query=10,
+            location="Munich, Germany",
+            min_unique_jobs=0,
+            provider=mock_provider,
+        )
 
         assert jobs == []
 
@@ -694,24 +712,25 @@ class TestEmptySearchResults:
 class TestDataFlowBetweenStages:
     """Verify that data produced by earlier stages reaches later stages."""
 
-    @patch("immermatch.search_agent.search_jobs")
     @patch("immermatch.evaluator_agent.call_gemini")
     @patch("immermatch.search_agent.call_gemini")
     def test_cv_data_flows_through_all_stages(
         self,
         mock_search_gemini: MagicMock,
         mock_eval_gemini: MagicMock,
-        mock_search_jobs: MagicMock,
         mock_client: MagicMock,
         tech_cv_text: str,
     ) -> None:
         """Data from the CV reaches the profile, queries, and evaluation prompts."""
         mock_search_gemini.side_effect = [TECH_PROFILE_JSON, QUERIES_JSON]
-        mock_search_jobs.side_effect = [MOCK_JOBS[:1]] + [[] for _ in range(19)]
         mock_eval_gemini.side_effect = [
             json.dumps(EVAL_RESPONSES[0]),
             SUMMARY_RESPONSE,
         ]
+
+        mock_provider = MagicMock()
+        mock_provider.name = "test"
+        mock_provider.search.side_effect = [MOCK_JOBS[:1]] + [[] for _ in range(19)]
 
         # Stage 1: Profile — verify CV text was sent to Gemini
         profile = profile_candidate(mock_client, tech_cv_text)
@@ -727,7 +746,13 @@ class TestDataFlowBetweenStages:
         assert "Munich" in query_prompt  # location passed through
 
         # Stage 3: Search
-        jobs = search_all_queries(queries, jobs_per_query=10, location="Munich, Germany", min_unique_jobs=0)
+        jobs = search_all_queries(
+            queries,
+            jobs_per_query=10,
+            location="Munich, Germany",
+            min_unique_jobs=0,
+            provider=mock_provider,
+        )
         assert len(jobs) == 1
 
         # Stage 4: Evaluate — verify profile data is in the evaluation prompt

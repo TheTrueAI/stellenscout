@@ -125,7 +125,7 @@ All external services (Gemini, SerpApi, Supabase, Resend) are mocked — no API 
 Linting and type checking:
 
 ```bash
-ruff check . && ruff format --check .
+ruff check --fix . && ruff format --check .
 mypy immermatch/ daily_task.py
 ```
 

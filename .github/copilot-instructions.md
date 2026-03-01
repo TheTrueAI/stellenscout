@@ -11,7 +11,7 @@
 Run the full check suite without asking — just do it:
 
 ```bash
-source .venv/bin/activate && pytest tests/ -x -q && ruff check . && mypy .
+source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && mypy .
 ```
 
 ## Testing conventions

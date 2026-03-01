@@ -31,7 +31,7 @@ No API keys are needed for running tests — all external services are mocked.
 
 2. Make your changes and run quality checks:
    ```bash
-   ruff check . && ruff format --check .
+   ruff check --fix . && ruff format --check .
    mypy immermatch/ daily_task.py
    pytest tests/ -x -q
    ```

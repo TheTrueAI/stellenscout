@@ -5,7 +5,8 @@ in :mod:`immermatch.serpapi_provider` and are re-exported here for backward
 compatibility.
 """
 
-import re
+from __future__ import annotations
+
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,15 +16,16 @@ from pydantic import ValidationError
 
 from .llm import call_gemini, parse_json
 from .models import CandidateProfile, JobListing
+from .search_provider import SearchProvider, get_provider
 
 # Re-export SerpApi helpers so existing imports keep working.
 from .serpapi_provider import BLOCKED_PORTALS as _BLOCKED_PORTALS  # noqa: F401
 from .serpapi_provider import CITY_LOCALISE as _CITY_LOCALISE  # noqa: F401
 from .serpapi_provider import COUNTRY_LOCALISE as _COUNTRY_LOCALISE  # noqa: F401
 from .serpapi_provider import GL_CODES as _GL_CODES  # noqa: F401
-from .serpapi_provider import infer_gl as _infer_gl
-from .serpapi_provider import is_remote_only as _is_remote_only
-from .serpapi_provider import localise_query as _localise_query
+from .serpapi_provider import infer_gl as _infer_gl  # noqa: F401
+from .serpapi_provider import is_remote_only as _is_remote_only  # noqa: F401
+from .serpapi_provider import localise_query as _localise_query  # noqa: F401
 from .serpapi_provider import parse_job_results as _parse_job_results  # noqa: F401
 from .serpapi_provider import search_jobs  # noqa: F401
 
@@ -98,6 +100,27 @@ Additional strategy:
 
 Return ONLY a JSON array of 20 search query strings, no explanation."""
 
+# System prompt for keyword-only queries used with Bundesagentur für Arbeit API.
+# The BA API has a dedicated ``wo`` (where) parameter, so queries must NOT
+# contain any location tokens.
+BA_HEADHUNTER_SYSTEM_PROMPT = """You are a Search Specialist generating keyword queries for the German Federal Employment Agency job search API (Bundesagentur für Arbeit).
+
+Based on the candidate's profile, generate distinct keyword queries to find relevant job openings. The API searches across German job listings and handles location filtering separately.
+
+IMPORTANT RULES:
+- Queries must be SHORT: 1-3 words ONLY
+- Do NOT include any city, region, or country names — location is handled by the API
+- Do NOT include "remote", "hybrid", or similar work-mode keywords
+- Include BOTH German and English job titles (the API indexes both)
+- Use different synonyms for the same role
+
+Strategy:
+1. First third: Exact role titles in German (e.g., "Softwareentwickler", "Datenanalyst", "Projektleiter")
+2. Second third: Exact role titles in English (e.g., "Software Developer", "Data Analyst", "Project Manager")
+3. Final third: Technology + role combinations and broader terms (e.g., "Python Entwickler", "Machine Learning", "DevOps Engineer")
+
+Return ONLY a JSON array of search query strings, no explanation."""
+
 
 def profile_candidate(client: genai.Client, cv_text: str) -> CandidateProfile:
     """
@@ -151,18 +174,35 @@ def generate_search_queries(
     profile: CandidateProfile,
     location: str = "",
     num_queries: int = 20,
+    *,
+    provider: SearchProvider | None = None,
 ) -> list[str]:
-    """
-    Generate optimized job search queries based on candidate profile.
+    """Generate optimized job search queries based on candidate profile.
+
+    When a :class:`~immermatch.bundesagentur.BundesagenturProvider` is active
+    the prompt asks the LLM for short keyword-only queries (no location
+    tokens).  For SerpApi / Google Jobs the prompt includes location-enrichment
+    strategies.
 
     Args:
         client: Gemini client instance.
         profile: Structured candidate profile.
         location: Target job location.
+        num_queries: Number of queries to generate.
+        provider: Explicit provider; defaults to ``get_provider(location)``.
 
     Returns:
         List of search query strings.
     """
+    if provider is None:
+        provider = get_provider(location)
+
+    # Select system prompt based on active provider
+    if provider.name == "Bundesagentur für Arbeit":
+        system_prompt = BA_HEADHUNTER_SYSTEM_PROMPT
+    else:
+        system_prompt = HEADHUNTER_SYSTEM_PROMPT
+
     profile_text = f"""Candidate Profile:
 - Skills: {", ".join(profile.skills)}
 - Experience Level: {profile.experience_level}
@@ -171,7 +211,7 @@ def generate_search_queries(
 - Domain Expertise: {", ".join(profile.domain_expertise)}
 - Target Location: {location}"""
 
-    prompt = f"{HEADHUNTER_SYSTEM_PROMPT}\n\nGenerate exactly {num_queries} queries.\n\n{profile_text}"
+    prompt = f"{system_prompt}\n\nGenerate exactly {num_queries} queries.\n\n{profile_text}"
 
     retry_prompt = (
         f"{prompt}\n\nIMPORTANT: Return ONLY a valid JSON array of strings with exactly {num_queries} queries."
@@ -195,81 +235,51 @@ def search_all_queries(
     jobs_per_query: int = 10,
     location: str = "",
     min_unique_jobs: int = 50,
-    on_progress: "None | Callable" = None,
-    on_jobs_found: "None | Callable[[list[JobListing]], None]" = None,
+    on_progress: None | Callable = None,
+    on_jobs_found: None | Callable[[list[JobListing]], None] = None,
+    *,
+    provider: SearchProvider | None = None,
 ) -> list[JobListing]:
-    """
-    Search for jobs across multiple queries and deduplicate results.
-    Queries without a location keyword get the location appended automatically,
-    since Google Jobs returns nothing without geographic context.
+    """Search for jobs across multiple queries and deduplicate results.
 
-    Stops early once *min_unique_jobs* unique listings have been collected,
-    saving SerpAPI calls for candidates in active markets.
+    Each query is forwarded to the active :class:`SearchProvider` which handles
+    location filtering, API-specific localisation, and pagination internally.
+
+    Stops early once *min_unique_jobs* unique listings have been collected.
 
     Args:
-        queries: List of search queries.
+        queries: List of search queries (keywords).
         jobs_per_query: Number of jobs to fetch per query.
-        location: Target location to append to queries missing one.
+        location: Target location passed to the provider.
         min_unique_jobs: Stop after collecting this many unique jobs (0 to disable).
         on_progress: Optional callback(completed_count, total_queries, unique_jobs_count)
-            invoked after each query completes. Because queries run in
+            invoked after each query completes.  Because queries run in
             parallel, completed_count reflects finish order, not the
             original query index.
         on_jobs_found: Optional callback(new_unique_jobs) invoked with each batch
             of newly discovered unique jobs as soon as a query completes.
             Enables the caller to start processing (e.g. evaluating) jobs before
             all searches finish.
+        provider: Explicit provider instance; defaults to ``get_provider(location)``.
 
     Returns:
         Deduplicated list of job listings.
     """
-    # Translate English city/country names to local names (e.g. Munich → München)
-    local_location = _localise_query(location)
-    remote_search = _is_remote_only(location)
-
-    # Build location keywords from BOTH original and localised forms
-    _location_words = set()
-    for loc in (location, local_location):
-        for w in loc.split():
-            cleaned = re.sub(r"[^\w]", "", w).lower()
-            if len(cleaned) >= 3:
-                _location_words.add(cleaned)
-    _location_words.add("remote")
-
-    # Infer Google country code for localisation (None for remote-only)
-    gl = _infer_gl(location)
-
-    # Determine SerpApi `location` param for geographic filtering.
-    # For remote searches we omit it; for everything else we pass the
-    # raw user-supplied string which SerpApi resolves to its geo DB.
-    serpapi_location: str | None = None if remote_search else location or None
+    if provider is None:
+        provider = get_provider(location)
 
     all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
     lock = threading.Lock()
     completed = 0
     early_stop = threading.Event()
 
-    # Prepare all search queries upfront (localisation, location append)
-    prepared_queries: list[str] = []
-    for query in queries:
-        query_lower = query.lower()
-        has_location = any(kw in query_lower for kw in _location_words)
-        search_query = query if has_location else f"{query} {local_location}"
-        search_query = _localise_query(search_query)
-        prepared_queries.append(search_query)
-
-    def _search_one(search_query: str) -> list[JobListing]:
+    def _search_one(query: str) -> list[JobListing]:
         if early_stop.is_set():
             return []
-        return search_jobs(
-            search_query,
-            num_results=jobs_per_query,
-            gl=gl,
-            location=serpapi_location,
-        )
+        return provider.search(query, location, max_results=jobs_per_query)
 
-    with ThreadPoolExecutor(max_workers=min(5, max(1, len(prepared_queries)))) as executor:
-        futures = [executor.submit(_search_one, sq) for sq in prepared_queries]
+    with ThreadPoolExecutor(max_workers=min(5, max(1, len(queries)))) as executor:
+        futures = [executor.submit(_search_one, q) for q in queries]
         for future in as_completed(futures):
             jobs = future.result()
             batch_new: list[JobListing] = []
