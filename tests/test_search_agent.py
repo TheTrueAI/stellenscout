@@ -176,7 +176,7 @@ class TestParseJobResults:
 
 
 class TestSearchAllQueries:
-    """Tests for search_all_queries() — mock search_jobs to test orchestration logic."""
+    """Tests for search_all_queries() — mock provider to test orchestration logic."""
 
     def _make_job(self, title: str, company: str = "Co") -> JobListing:
         return JobListing(
@@ -186,80 +186,95 @@ class TestSearchAllQueries:
             apply_options=[ApplyOption(source="LinkedIn", url="https://linkedin.com/1")],
         )
 
-    @patch("immermatch.search_agent.search_jobs")
-    def test_appends_localised_location_to_query_without_one(self, mock_search: MagicMock):
-        mock_search.return_value = [self._make_job("Dev")]
+    def _make_provider(self, jobs: list[JobListing] | None = None) -> MagicMock:
+        provider = MagicMock()
+        provider.name = "test"
+        provider.search.return_value = jobs if jobs is not None else []
+        return provider
+
+    def test_passes_query_and_location_to_provider(self):
+        provider = self._make_provider([self._make_job("Dev")])
 
         search_all_queries(
             queries=["Python Developer"],
             location="Munich, Germany",
             min_unique_jobs=0,
+            provider=provider,
         )
 
-        # The query should have "München" appended (localised) and then localised again (no-op)
-        actual_query = mock_search.call_args[0][0]
-        assert "München" in actual_query
-        # Should pass gl and location to search_jobs
-        assert mock_search.call_args[1]["gl"] == "de"
-        assert mock_search.call_args[1]["location"] == "Munich, Germany"
+        provider.search.assert_called_once_with(
+            "Python Developer",
+            "Munich, Germany",
+            max_results=10,
+        )
 
-    @patch("immermatch.search_agent.search_jobs")
-    def test_does_not_double_append_location(self, mock_search: MagicMock):
-        mock_search.return_value = [self._make_job("Dev")]
+    def test_deduplicates_by_title_and_company(self):
+        provider = self._make_provider([self._make_job("Dev"), self._make_job("Dev")])
 
-        search_all_queries(
-            queries=["Python Developer München"],
-            location="Munich, Germany",
+        results = search_all_queries(
+            queries=["query1", "query2"],
+            location="Berlin",
             min_unique_jobs=0,
+            provider=provider,
         )
 
-        # Query already contains "münchen" (location keyword) so location should NOT be appended
-        actual_query = mock_search.call_args[0][0]
-        assert actual_query.count("München") == 1
+        assert len(results) == 1
 
-    @patch("immermatch.search_agent.search_jobs")
-    def test_remote_search_omits_gl_and_serpapi_location(self, mock_search: MagicMock):
-        mock_search.return_value = [self._make_job("Remote Dev")]
-
-        search_all_queries(
-            queries=["Python Developer remote"],
-            location="remote",
-            min_unique_jobs=0,
-        )
-
-        assert mock_search.call_args[1]["gl"] is None
-        assert mock_search.call_args[1]["location"] is None
-
-    @patch("immermatch.search_agent.search_jobs")
-    def test_country_search_passes_location_param(self, mock_search: MagicMock):
-        mock_search.return_value = [self._make_job("Dev")]
-
-        search_all_queries(
-            queries=["Python Developer"],
-            location="Germany",
-            min_unique_jobs=0,
-        )
-
-        assert mock_search.call_args[1]["gl"] == "de"
-        assert mock_search.call_args[1]["location"] == "Germany"
-        # Query should have localised country name appended
-        actual_query = mock_search.call_args[0][0]
-        assert "Deutschland" in actual_query
-
-    @patch("immermatch.search_agent.search_jobs")
-    def test_stops_early_when_min_unique_jobs_reached(self, mock_search: MagicMock):
-        mock_search.return_value = [self._make_job("Unique Job")]
+    def test_stops_early_when_min_unique_jobs_reached(self):
+        provider = self._make_provider([self._make_job("Unique Job")])
 
         results = search_all_queries(
             queries=["query1", "query2", "query3"],
             location="Berlin, Germany",
             min_unique_jobs=1,
+            provider=provider,
         )
 
         # Parallel dispatch: all futures may fire before early_stop takes effect
         # (mocks return instantly). The guarantee is correct dedup + results.
         assert len(results) == 1
-        assert mock_search.call_count <= 3
+        assert provider.search.call_count <= 3
+
+    def test_on_progress_callback(self):
+        provider = self._make_provider([self._make_job("Dev")])
+        progress_calls: list[tuple] = []
+
+        search_all_queries(
+            queries=["query1"],
+            location="Berlin",
+            min_unique_jobs=0,
+            provider=provider,
+            on_progress=lambda *args: progress_calls.append(args),
+        )
+
+        assert len(progress_calls) == 1
+        assert progress_calls[0] == (1, 1, 1)
+
+    def test_on_jobs_found_callback(self):
+        provider = self._make_provider([self._make_job("Dev")])
+        found_batches: list[list[JobListing]] = []
+
+        search_all_queries(
+            queries=["query1"],
+            location="Berlin",
+            min_unique_jobs=0,
+            provider=provider,
+            on_jobs_found=lambda batch: found_batches.append(batch),
+        )
+
+        assert len(found_batches) == 1
+        assert found_batches[0][0].title == "Dev"
+
+    @patch("immermatch.search_agent.get_provider")
+    def test_defaults_to_get_provider(self, mock_gp: MagicMock):
+        """When no provider given, get_provider(location) is called."""
+        mock_provider = MagicMock()
+        mock_provider.search.return_value = []
+        mock_gp.return_value = mock_provider
+
+        search_all_queries(queries=["test"], location="Berlin")
+
+        mock_gp.assert_called_once_with("Berlin")
 
 
 class TestLlmJsonRecovery:
@@ -411,3 +426,57 @@ class TestLlmJsonRecovery:
 
         assert result.experience_level == "Mid"
         assert mock_call_gemini.call_count == 2
+
+
+class TestGenerateSearchQueriesProviderPrompt:
+    """Verify that generate_search_queries picks the right prompt per provider."""
+
+    _PROFILE = CandidateProfile(
+        skills=["Python"],
+        experience_level="Mid",
+        years_of_experience=3,
+        roles=["Backend Developer", "Python Developer", "Software Engineer", "Entwickler", "Engineer"],
+        languages=["English C1"],
+        domain_expertise=["SaaS"],
+        certifications=[],
+        education=[],
+        summary="",
+        work_history=[],
+        education_history=[],
+    )
+
+    @patch("immermatch.search_agent.call_gemini")
+    def test_ba_provider_uses_ba_prompt(self, mock_call_gemini: MagicMock):
+        mock_call_gemini.return_value = '["Softwareentwickler", "Python Developer"]'
+        ba_provider = MagicMock()
+        ba_provider.name = "Bundesagentur für Arbeit"
+
+        generate_search_queries(
+            MagicMock(),
+            self._PROFILE,
+            location="Berlin",
+            num_queries=2,
+            provider=ba_provider,
+        )
+
+        prompt_sent = mock_call_gemini.call_args[0][1]
+        assert "Bundesagentur" in prompt_sent
+        assert "Do NOT include any city" in prompt_sent
+
+    @patch("immermatch.search_agent.call_gemini")
+    def test_other_provider_uses_default_prompt(self, mock_call_gemini: MagicMock):
+        mock_call_gemini.return_value = '["Python Developer Berlin"]'
+        other_provider = MagicMock()
+        other_provider.name = "SerpApi (Google Jobs)"
+
+        generate_search_queries(
+            MagicMock(),
+            self._PROFILE,
+            location="Berlin",
+            num_queries=2,
+            provider=other_provider,
+        )
+
+        prompt_sent = mock_call_gemini.call_args[0][1]
+        assert "Google Jobs" in prompt_sent
+        assert "LOCAL names" in prompt_sent
