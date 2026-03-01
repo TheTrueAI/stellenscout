@@ -15,7 +15,7 @@ from pathlib import Path
 
 import streamlit as st
 
-jobs_per_query = 10  # default value
+jobs_per_query = 20  # default value
 
 # ---------------------------------------------------------------------------
 # Inject API keys from Streamlit secrets into env vars
