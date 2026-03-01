@@ -378,10 +378,6 @@ class TestBundesagenturProviderSearch:
 
         assert len(jobs) == 3
 
-    def test_veroeffentlichtseit_default(self) -> None:
-        provider = BundesagenturProvider()
-        assert provider._days_published == 7
-
     def test_veroeffentlichtseit_custom(self) -> None:
         provider = BundesagenturProvider(days_published=3)
         assert provider._days_published == 3

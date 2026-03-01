@@ -15,6 +15,7 @@ from immermatch.search_agent import (
     profile_candidate,
     search_all_queries,
 )
+from immermatch.search_provider import CombinedSearchProvider
 
 
 class TestIsRemoteOnly:
@@ -178,11 +179,11 @@ class TestParseJobResults:
 class TestSearchAllQueries:
     """Tests for search_all_queries() — mock provider to test orchestration logic."""
 
-    def _make_job(self, title: str, company: str = "Co") -> JobListing:
+    def _make_job(self, title: str, company: str = "Co", location: str = "Berlin") -> JobListing:
         return JobListing(
             title=title,
             company_name=company,
-            location="Berlin",
+            location=location,
             apply_options=[ApplyOption(source="LinkedIn", url="https://linkedin.com/1")],
         )
 
@@ -208,8 +209,14 @@ class TestSearchAllQueries:
             max_results=10,
         )
 
-    def test_deduplicates_by_title_and_company(self):
-        provider = self._make_provider([self._make_job("Dev"), self._make_job("Dev")])
+    def test_deduplicates_by_title_company_and_location(self):
+        provider = self._make_provider(
+            [
+                self._make_job("Dev", location="Berlin"),
+                self._make_job("Dev", location="Berlin"),
+                self._make_job("Dev", location="Munich"),
+            ]
+        )
 
         results = search_all_queries(
             queries=["query1", "query2"],
@@ -218,7 +225,7 @@ class TestSearchAllQueries:
             provider=provider,
         )
 
-        assert len(results) == 1
+        assert len(results) == 2
 
     def test_stops_early_when_min_unique_jobs_reached(self):
         provider = self._make_provider([self._make_job("Unique Job")])
@@ -276,6 +283,82 @@ class TestSearchAllQueries:
 
         mock_gp.assert_called_once_with("Berlin")
 
+    def test_combined_provider_hard_quota_requires_30_each_before_stop(self):
+        ba_provider = MagicMock()
+        ba_provider.name = "Bundesagentur für Arbeit"
+        ba_jobs = [self._make_job(f"BA {i}", company=f"BA Co {i}", location="Berlin") for i in range(30)]
+        for job in ba_jobs:
+            job.source = "bundesagentur"
+        ba_provider.search.return_value = ba_jobs
+
+        serp_provider = MagicMock()
+        serp_provider.name = "SerpApi (Google Jobs)"
+        serp_jobs = [self._make_job(f"SERP {i}", company=f"SERP Co {i}", location="Berlin") for i in range(30)]
+        for job in serp_jobs:
+            job.source = "serpapi"
+        serp_provider.search.return_value = serp_jobs
+
+        combined = CombinedSearchProvider([ba_provider, serp_provider])
+        results = search_all_queries(
+            queries=[
+                "provider=Bundesagentur für Arbeit::Softwareentwickler",
+                "provider=SerpApi (Google Jobs)::Python Developer Berlin",
+            ],
+            jobs_per_query=30,
+            location="Berlin",
+            min_unique_jobs=50,
+            provider=combined,
+        )
+
+        assert len(results) == 60
+        ba_count = len([job for job in results if job.source == "bundesagentur"])
+        serp_count = len([job for job in results if job.source == "serpapi"])
+        assert ba_count >= 30
+        assert serp_count >= 30
+
+    @patch("immermatch.search_agent.logger")
+    def test_logs_source_counts(self, mock_logger: MagicMock):
+        provider = self._make_provider(
+            [
+                self._make_job("BA Job", location="Berlin"),
+                self._make_job("SERP Job", location="Munich"),
+            ]
+        )
+        provider.search.return_value[0].source = "bundesagentur"
+        provider.search.return_value[1].source = "serpapi"
+
+        search_all_queries(
+            queries=["query1"],
+            location="Berlin",
+            min_unique_jobs=0,
+            provider=provider,
+        )
+
+        assert mock_logger.info.called
+        logged_texts = " ".join(str(call.args) for call in mock_logger.info.call_args_list)
+        assert "bundesagentur" in logged_texts
+        assert "serpapi" in logged_texts
+
+    def test_combined_provider_routes_query_to_target_provider(self):
+        ba_provider = MagicMock()
+        ba_provider.name = "Bundesagentur für Arbeit"
+        ba_provider.search.return_value = []
+
+        serp_provider = MagicMock()
+        serp_provider.name = "SerpApi (Google Jobs)"
+        serp_provider.search.return_value = [self._make_job("Dev", location="Berlin")]
+
+        combined = CombinedSearchProvider([ba_provider, serp_provider])
+        search_all_queries(
+            queries=["provider=SerpApi (Google Jobs)::Python Developer Berlin"],
+            location="Berlin",
+            min_unique_jobs=0,
+            provider=combined,
+        )
+
+        ba_provider.search.assert_not_called()
+        serp_provider.search.assert_called_once_with("Python Developer Berlin", "Berlin", max_results=10)
+
 
 class TestLlmJsonRecovery:
     @patch("immermatch.search_agent.call_gemini")
@@ -325,8 +408,16 @@ class TestLlmJsonRecovery:
             education_history=[],
         )
         mock_call_gemini.side_effect = ["not json", '["python developer berlin", "backend berlin"]']
+        provider = MagicMock()
+        provider.name = "SerpApi (Google Jobs)"
 
-        queries = generate_search_queries(MagicMock(), profile, location="Berlin, Germany", num_queries=2)
+        queries = generate_search_queries(
+            MagicMock(),
+            profile,
+            location="Berlin, Germany",
+            num_queries=2,
+            provider=provider,
+        )
 
         assert queries == ["python developer berlin", "backend berlin"]
         assert mock_call_gemini.call_count == 2
@@ -356,8 +447,16 @@ class TestLlmJsonRecovery:
             education_history=[],
         )
         mock_call_gemini.side_effect = ["not json", "still not json"]
+        provider = MagicMock()
+        provider.name = "SerpApi (Google Jobs)"
 
-        queries = generate_search_queries(MagicMock(), profile, location="Berlin, Germany", num_queries=2)
+        queries = generate_search_queries(
+            MagicMock(),
+            profile,
+            location="Berlin, Germany",
+            num_queries=2,
+            provider=provider,
+        )
 
         assert queries == []
         assert mock_call_gemini.call_count == 2
@@ -480,3 +579,30 @@ class TestGenerateSearchQueriesProviderPrompt:
         prompt_sent = mock_call_gemini.call_args[0][1]
         assert "Google Jobs" in prompt_sent
         assert "LOCAL names" in prompt_sent
+
+    @patch("immermatch.search_agent.call_gemini")
+    def test_combined_provider_generates_queries_per_child_provider(self, mock_call_gemini: MagicMock):
+        mock_call_gemini.side_effect = [
+            '["Softwareentwickler", "Datenanalyst"]',
+            '["Python Developer Berlin", "Data Engineer Berlin"]',
+        ]
+
+        ba_provider = MagicMock()
+        ba_provider.name = "Bundesagentur für Arbeit"
+        serp_provider = MagicMock()
+        serp_provider.name = "SerpApi (Google Jobs)"
+        combined = CombinedSearchProvider([ba_provider, serp_provider])
+
+        queries = generate_search_queries(
+            MagicMock(),
+            self._PROFILE,
+            location="Berlin",
+            num_queries=4,
+            provider=combined,
+        )
+
+        assert len(queries) == 4
+        assert all(query.startswith("provider=") for query in queries)
+        prompts_sent = [call.args[1] for call in mock_call_gemini.call_args_list]
+        assert any("Bundesagentur" in prompt for prompt in prompts_sent)
+        assert any("Google Jobs" in prompt for prompt in prompts_sent)

@@ -322,6 +322,12 @@ def mock_client() -> MagicMock:
     return MagicMock()
 
 
+def _query_provider() -> MagicMock:
+    provider = MagicMock()
+    provider.name = "Bundesagentur für Arbeit"
+    return provider
+
+
 # ---------------------------------------------------------------------------
 # Integration tests
 # ---------------------------------------------------------------------------
@@ -368,7 +374,7 @@ class TestFullPipelineTechCV:
         assert len(profile.work_history) == 2
 
         # --- Act: Stage 2 — Queries ---
-        queries = generate_search_queries(mock_client, profile, "Munich, Germany")
+        queries = generate_search_queries(mock_client, profile, "Munich, Germany", provider=_query_provider())
         assert isinstance(queries, list)
         assert len(queries) == 20
 
@@ -452,7 +458,7 @@ class TestFullPipelineSustainabilityCV:
         assert profile.experience_level == "Mid"
         assert any("Sustainability" in r for r in profile.roles)
 
-        queries = generate_search_queries(mock_client, profile, "Munich, Germany")
+        queries = generate_search_queries(mock_client, profile, "Munich, Germany", provider=_query_provider())
         assert len(queries) == 20
 
         jobs = search_all_queries(
@@ -534,7 +540,7 @@ class TestQueryGeneration:
         mock_gemini.side_effect = [TECH_PROFILE_JSON, QUERIES_JSON]
 
         profile = profile_candidate(mock_client, tech_cv_text)
-        queries = generate_search_queries(mock_client, profile, "Munich, Germany")
+        queries = generate_search_queries(mock_client, profile, "Munich, Germany", provider=_query_provider())
 
         assert len(queries) == 20
         assert all(isinstance(q, str) for q in queries)
@@ -689,7 +695,7 @@ class TestEmptySearchResults:
         mock_provider.search.return_value = []
 
         profile = profile_candidate(mock_client, tech_cv_text)
-        queries = generate_search_queries(mock_client, profile, "Munich, Germany")
+        queries = generate_search_queries(mock_client, profile, "Munich, Germany", provider=_query_provider())
         jobs = search_all_queries(
             queries,
             jobs_per_query=10,
@@ -739,7 +745,7 @@ class TestDataFlowBetweenStages:
         assert "TechCorp" in profile_prompt or "John Doe" in profile_prompt
 
         # Stage 2: Queries — verify profile data was sent to Gemini
-        queries = generate_search_queries(mock_client, profile, "Munich, Germany")
+        queries = generate_search_queries(mock_client, profile, "Munich, Germany", provider=_query_provider())
         query_prompt = mock_search_gemini.call_args_list[1][0][1]
         assert "Senior Software Engineer" in query_prompt  # from profile.roles
         assert "Python" in query_prompt  # from profile.skills

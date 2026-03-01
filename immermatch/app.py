@@ -52,6 +52,7 @@ from immermatch.search_agent import (  # noqa: E402
     profile_candidate,
     search_all_queries,
 )
+from immermatch.search_provider import parse_provider_query  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -775,7 +776,7 @@ def _run_pipeline() -> None:
                     job = futures[future]
                     evaluation = future.result()
                     ej = EvaluatedJob(job=job, evaluation=evaluation)
-                    key = f"{ej.job.title}|{ej.job.company_name}"
+                    key = f"{ej.job.title}|{ej.job.company_name}|{ej.job.location}"
                     all_evals[key] = ej
                     progress_bar.progress(
                         i / len(new_jobs),
@@ -802,7 +803,7 @@ def _run_pipeline() -> None:
             def _on_jobs_found(new_unique_jobs: list[JobListing]) -> None:
                 """Submit newly found jobs for evaluation immediately."""
                 for job in new_unique_jobs:
-                    key = f"{job.title}|{job.company_name}"
+                    key = f"{job.title}|{job.company_name}|{job.location}"
                     if key in all_evals:
                         continue  # already evaluated (from cache)
                     fut = eval_executor.submit(evaluate_job, client, profile, job)
@@ -847,7 +848,7 @@ def _run_pipeline() -> None:
                     job = eval_futures[future]
                     evaluation = future.result()
                     ej = EvaluatedJob(job=job, evaluation=evaluation)
-                    key = f"{ej.job.title}|{ej.job.company_name}"
+                    key = f"{ej.job.title}|{ej.job.company_name}|{ej.job.location}"
                     all_evals[key] = ej
                     eval_progress.progress(
                         i / total_evals,
@@ -951,7 +952,8 @@ if st.session_state.evaluated_jobs is not None:
             expanded=False,
         ):
             for q in st.session_state.queries:
-                st.markdown(f"- {q}")
+                _, clean_query = parse_provider_query(q)
+                st.markdown(f"- {clean_query}")
 
     # -- Profile (collapsed) -----------------------------------------------
     if st.session_state.profile is not None:

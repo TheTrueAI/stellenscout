@@ -130,7 +130,7 @@ class ResultCache:
             existing = data.get("jobs", {})
 
         for job in jobs:
-            key = f"{job.title}|{job.company_name}"
+            key = f"{job.title}|{job.company_name}|{job.location}"
             existing[key] = job.model_dump()
 
         self._save(
@@ -143,7 +143,7 @@ class ResultCache:
         )
 
     # ------------------------------------------------------------------
-    # 4. Evaluations  (append-only, keyed by title|company)
+    # 4. Evaluations  (append-only, keyed by title|company|location)
     # ------------------------------------------------------------------
 
     def load_evaluations(self, profile: CandidateProfile) -> dict[str, EvaluatedJob]:
@@ -188,5 +188,5 @@ class ResultCache:
         Jobs already in the evaluation cache are skipped.
         """
         cached = self.load_evaluations(profile)
-        new_jobs = [job for job in jobs if f"{job.title}|{job.company_name}" not in cached]
+        new_jobs = [job for job in jobs if f"{job.title}|{job.company_name}|{job.location}" not in cached]
         return new_jobs, cached
