@@ -1,6 +1,10 @@
-"""Search Agent module - Generates optimized job search queries using LLM."""
+"""Search Agent module - Generates optimized job search queries using LLM.
 
-import os
+The SerpApi-specific helpers (``_infer_gl``, ``_localise_query``, etc.) live
+in :mod:`immermatch.serpapi_provider` and are re-exported here for backward
+compatibility.
+"""
+
 import re
 import threading
 from collections.abc import Callable
@@ -8,246 +12,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from pydantic import ValidationError
-from serpapi import GoogleSearch
 
 from .llm import call_gemini, parse_json
-from .models import ApplyOption, CandidateProfile, JobListing
+from .models import CandidateProfile, JobListing
 
-# Questionable job portals that often have expired listings or paywalls
-_BLOCKED_PORTALS = {
-    "bebee",
-    "trabajo",
-    "jooble",
-    "adzuna",
-    "jobrapido",
-    "neuvoo",
-    "mitula",
-    "trovit",
-    "jobomas",
-    "jobijoba",
-    "talent",
-    "jobatus",
-    "jobsora",
-    "studysmarter",
-    "jobilize",
-    "learn4good",
-    "grabjobs",
-    "jobtensor",
-    "zycto",
-    "terra.do",
-    "jobzmall",
-    "simplyhired",
-}
-
-# Map country/city names to Google gl= codes so SerpApi doesn't default to "us"
-_GL_CODES: dict[str, str] = {
-    # Countries
-    "germany": "de",
-    "deutschland": "de",
-    "france": "fr",
-    "netherlands": "nl",
-    "holland": "nl",
-    "belgium": "be",
-    "austria": "at",
-    "österreich": "at",
-    "switzerland": "ch",
-    "schweiz": "ch",
-    "suisse": "ch",
-    "spain": "es",
-    "españa": "es",
-    "italy": "it",
-    "italia": "it",
-    "portugal": "pt",
-    "poland": "pl",
-    "polska": "pl",
-    "sweden": "se",
-    "sverige": "se",
-    "norway": "no",
-    "norge": "no",
-    "denmark": "dk",
-    "danmark": "dk",
-    "finland": "fi",
-    "suomi": "fi",
-    "ireland": "ie",
-    "czech republic": "cz",
-    "czechia": "cz",
-    "romania": "ro",
-    "hungary": "hu",
-    "greece": "gr",
-    "luxembourg": "lu",
-    "uk": "uk",
-    "united kingdom": "uk",
-    "england": "uk",
-    # Major cities → country
-    "berlin": "de",
-    "munich": "de",
-    "münchen": "de",
-    "hamburg": "de",
-    "frankfurt": "de",
-    "stuttgart": "de",
-    "düsseldorf": "de",
-    "köln": "de",
-    "cologne": "de",
-    "hannover": "de",
-    "nürnberg": "de",
-    "nuremberg": "de",
-    "leipzig": "de",
-    "dresden": "de",
-    "dortmund": "de",
-    "essen": "de",
-    "bremen": "de",
-    "paris": "fr",
-    "lyon": "fr",
-    "marseille": "fr",
-    "toulouse": "fr",
-    "amsterdam": "nl",
-    "rotterdam": "nl",
-    "eindhoven": "nl",
-    "utrecht": "nl",
-    "brussels": "be",
-    "bruxelles": "be",
-    "antwerp": "be",
-    "vienna": "at",
-    "wien": "at",
-    "graz": "at",
-    "zurich": "ch",
-    "zürich": "ch",
-    "geneva": "ch",
-    "genève": "ch",
-    "basel": "ch",
-    "bern": "ch",
-    "madrid": "es",
-    "barcelona": "es",
-    "rome": "it",
-    "milan": "it",
-    "milano": "it",
-    "lisbon": "pt",
-    "porto": "pt",
-    "warsaw": "pl",
-    "kraków": "pl",
-    "krakow": "pl",
-    "wrocław": "pl",
-    "stockholm": "se",
-    "gothenburg": "se",
-    "malmö": "se",
-    "oslo": "no",
-    "copenhagen": "dk",
-    "helsinki": "fi",
-    "dublin": "ie",
-    "prague": "cz",
-    "bucharest": "ro",
-    "budapest": "hu",
-    "athens": "gr",
-    "london": "uk",
-    "manchester": "uk",
-    "edinburgh": "uk",
-}
-
-
-# Tokens that signal a purely remote / worldwide search (no single country).
-_REMOTE_TOKENS = {"remote", "worldwide", "global", "anywhere", "weltweit"}
-
-
-def _is_remote_only(location: str) -> bool:
-    """Return True when the location string contains ONLY remote-like tokens."""
-    words = {re.sub(r"[^\w]", "", w).lower() for w in location.split() if w.strip()}
-    return bool(words) and words <= _REMOTE_TOKENS
-
-
-def _infer_gl(location: str) -> str | None:
-    """Infer a Google gl= country code from a free-form location string.
-
-    Returns *None* for purely remote/global searches so CallerCode can
-    decide whether to set ``gl`` at all (SerpApi defaults to "us").
-    Falls back to "de" when a location is given but no country can be
-    determined, since SerpApi defaults to "us" otherwise and returns
-    0 European results.
-    """
-    if _is_remote_only(location):
-        return None
-
-    loc_lower = location.lower()
-    for name, code in _GL_CODES.items():
-        if name in loc_lower:
-            return code
-    return "de"
-
-
-# English city names → local names used by Google Jobs.
-# Google Jobs with gl=de returns 0 results for "Munich" but 30 for "München".
-_CITY_LOCALISE: dict[str, str] = {
-    # German
-    "munich": "München",
-    "cologne": "Köln",
-    "nuremberg": "Nürnberg",
-    "hanover": "Hannover",
-    "dusseldorf": "Düsseldorf",
-    # Austrian
-    "vienna": "Wien",
-    # Swiss
-    "zurich": "Zürich",
-    "geneva": "Genève",
-    # Czech
-    "prague": "Praha",
-    # Polish
-    "warsaw": "Warszawa",
-    "krakow": "Kraków",
-    "wroclaw": "Wrocław",
-    # Danish
-    "copenhagen": "København",
-    # Greek
-    "athens": "Athína",
-    # Romanian
-    "bucharest": "București",
-    # Italian
-    "milan": "Milano",
-    "rome": "Roma",
-    # Portuguese
-    "lisbon": "Lisboa",
-    # Belgian
-    "brussels": "Bruxelles",
-    "antwerp": "Antwerpen",
-    # Swedish
-    "gothenburg": "Göteborg",
-}
-
-# English country names → local names for search queries.
-_COUNTRY_LOCALISE: dict[str, str] = {
-    "germany": "Deutschland",
-    "austria": "Österreich",
-    "switzerland": "Schweiz",
-    "netherlands": "Niederlande",
-    "czech republic": "Česká republika",
-    "czechia": "Česko",
-    "poland": "Polska",
-    "sweden": "Sverige",
-    "norway": "Norge",
-    "denmark": "Danmark",
-    "finland": "Suomi",
-    "hungary": "Magyarország",
-    "romania": "România",
-    "greece": "Ελλάδα",
-}
-
-# Build a case-insensitive regex that matches any English city name as a whole word
-_LOCALISE_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in _CITY_LOCALISE) + r")\b",
-    re.IGNORECASE,
-)
-
-# Same for country names (longer keys first so "czech republic" beats "czech")
-_COUNTRY_LOCALISE_PATTERN = re.compile(
-    r"\b(" + "|".join(re.escape(k) for k in sorted(_COUNTRY_LOCALISE, key=len, reverse=True)) + r")\b",
-    re.IGNORECASE,
-)
-
-
-def _localise_query(query: str) -> str:
-    """Replace English city and country names with their local equivalents."""
-    query = _LOCALISE_PATTERN.sub(lambda m: _CITY_LOCALISE[m.group(0).lower()], query)
-    query = _COUNTRY_LOCALISE_PATTERN.sub(lambda m: _COUNTRY_LOCALISE[m.group(0).lower()], query)
-    return query
-
+# Re-export SerpApi helpers so existing imports keep working.
+from .serpapi_provider import BLOCKED_PORTALS as _BLOCKED_PORTALS  # noqa: F401
+from .serpapi_provider import CITY_LOCALISE as _CITY_LOCALISE  # noqa: F401
+from .serpapi_provider import COUNTRY_LOCALISE as _COUNTRY_LOCALISE  # noqa: F401
+from .serpapi_provider import GL_CODES as _GL_CODES  # noqa: F401
+from .serpapi_provider import infer_gl as _infer_gl
+from .serpapi_provider import is_remote_only as _is_remote_only
+from .serpapi_provider import localise_query as _localise_query
+from .serpapi_provider import parse_job_results as _parse_job_results  # noqa: F401
+from .serpapi_provider import search_jobs  # noqa: F401
 
 # System prompt for the Profiler agent
 PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep knowledge of European job markets.
@@ -410,105 +188,6 @@ def generate_search_queries(
             return queries[:num_queries]
 
     return []
-
-
-def _parse_job_results(results: dict) -> list[JobListing]:
-    """Parse job listings from a SerpApi response dict."""
-    jobs: list[JobListing] = []
-
-    for job_data in results.get("jobs_results", []):
-        description_parts = []
-        if "description" in job_data:
-            description_parts.append(job_data["description"])
-        if "highlights" in job_data:
-            for highlight in job_data.get("highlights", []):
-                if "items" in highlight:
-                    description_parts.extend(highlight["items"])
-
-        # Extract apply options (LinkedIn, company website, etc.)
-        # Filter out questionable job portals
-        apply_options = []
-        for option in job_data.get("apply_options", []):
-            if "title" in option and "link" in option:
-                url = option["link"].lower()
-                # Skip if the URL contains any blocked portal domain
-                if not any(blocked in url for blocked in _BLOCKED_PORTALS):
-                    apply_options.append(ApplyOption(source=option["title"], url=option["link"]))
-
-        # Skip jobs that only have questionable portal links or no links at all
-        if not apply_options:
-            continue
-
-        job = JobListing(
-            title=job_data.get("title", "Unknown"),
-            company_name=job_data.get("company_name", "Unknown"),
-            location=job_data.get("location", "Unknown"),
-            description="\n".join(description_parts),
-            link=job_data.get("share_link", job_data.get("link", "")),
-            posted_at=job_data.get("detected_extensions", {}).get("posted_at", ""),
-            apply_options=apply_options,
-        )
-        jobs.append(job)
-
-    return jobs
-
-
-def search_jobs(
-    query: str,
-    num_results: int = 10,
-    gl: str | None = "de",
-    location: str | None = None,
-) -> list[JobListing]:
-    """
-    Search for jobs using SerpApi Google Jobs engine with pagination.
-
-    Args:
-        query: Search query string.
-        num_results: Maximum number of results to return.
-        gl: Google country code (e.g. "de", "fr"). *None* to omit.
-        location: SerpApi ``location`` parameter for geographic filtering
-            (e.g. "Germany", "Munich, Bavaria, Germany"). *None* to omit.
-
-    Returns:
-        List of job listings.
-    """
-    api_key = os.getenv("SERPAPI_KEY")
-    if not api_key:
-        raise ValueError("SERPAPI_KEY environment variable not set")
-
-    all_jobs: list[JobListing] = []
-    next_page_token = None
-
-    while len(all_jobs) < num_results:
-        params: dict[str, str] = {
-            "engine": "google_jobs",
-            "q": query,
-            "hl": "en",  # English results
-            "api_key": api_key,
-        }
-        if gl is not None:
-            params["gl"] = gl
-        if location is not None:
-            params["location"] = location
-        if next_page_token:
-            params["next_page_token"] = next_page_token
-
-        search = GoogleSearch(params)
-        results = search.get_dict()
-
-        page_jobs = _parse_job_results(results)
-        if not page_jobs:
-            break
-
-        all_jobs.extend(page_jobs)
-
-        # Check for next page
-        pagination = results.get("serpapi_pagination", {})
-        next_page_token = pagination.get("next_page_token")
-        if not next_page_token:
-            break
-
-    return all_jobs[:num_results]
 
 
 def search_all_queries(
