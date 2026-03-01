@@ -1,15 +1,14 @@
 """Impressum / Legal Notice — required by § 5 DDG (Digitale-Dienste-Gesetz)."""
 
+import contextlib
 import os
 
 import streamlit as st
 
 for key in ("IMPRESSUM_NAME", "IMPRESSUM_ADDRESS", "IMPRESSUM_EMAIL", "IMPRESSUM_PHONE"):
     if key not in os.environ:
-        try:
+        with contextlib.suppress(KeyError, FileNotFoundError):
             os.environ[key] = st.secrets[key]
-        except (KeyError, FileNotFoundError):
-            pass
 
 _name = os.environ.get("IMPRESSUM_NAME", "")
 _address = os.environ.get("IMPRESSUM_ADDRESS", "")

@@ -510,6 +510,12 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 | `test_db.py` (35 tests) | `db.py` | Full GDPR lifecycle: add/confirm/expire/purge subscribers, deactivate by token, data deletion, subscription context, job upsert/dedup, sent-log tracking. All DB functions mocked at Supabase client level |
 | `test_emailer.py` (22 tests) | `emailer.py` | HTML generation: job row badges/cards/location, job count, match stats, unsubscribe link, target location in header, impressum line, welcome email (location, days, privacy, impressum) |
 | `test_app_consent.py` (5 tests) | `app.py` | GDPR consent checkbox: session state persistence, widget key separation, on_change sync |
+| `test_app_ui.py` (3 tests) | `app.py` | Streamlit AppTest: Phase A landing page renders, consent checkbox present, sidebar elements |
+| `test_daily_task.py` (8 tests) | `daily_task.py` | `main()` orchestrator: mocked DB, search, evaluation, email; subscriber lifecycle, error handling |
+| `test_integration.py` (11 tests) | Full pipeline | End-to-end: CV text → profile → queries → search → evaluate → summary, all services mocked |
+| `test_pages_unsubscribe.py` (6 tests) | `pages/unsubscribe.py` | Unsubscribe page logic: token validation, DB deactivation, error states (AppTest) |
+| `test_pages_verify.py` (7 tests) | `pages/verify.py` | DOI verification page: token confirmation, welcome email, expiry setting, error states (AppTest) |
+| `test_search_provider.py` (2 tests) | `search_provider.py` | Provider helpers: `parse_provider_query()`, combined provider behavior |
 
 ### Testing conventions
 - All external services (Gemini API, SerpAPI, Supabase) are mocked — no API keys needed to run tests
@@ -553,7 +559,7 @@ Immermatch is **free to self-host** (bring your own API keys). The official host
 
 ## 14. Development Workflow & Agent Instructions
 
-This section documents the development process and conventions for both human and AI agents working on this codebase. `CLAUDE.md` is a symlink to this file, so any AI coding agent (Copilot Chat, Claude Code CLI, etc.) will read these instructions automatically.
+This section documents the development process and conventions for both human and AI agents working on this codebase. `CLAUDE.md` is a lightweight quick-reference version of these instructions that Claude Code loads automatically. It points agents here for full architecture context.
 
 ### Quick Reference (for AI agents)
 
@@ -570,7 +576,7 @@ source .venv/bin/activate
 
 **IMPORTANT:** After every code change, run the check suite **without asking for permission** — just do it:
 ```bash
-source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && mypy .
+source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
 ```
 Do not ask the user "Shall I run the tests?" — always run them automatically.
 

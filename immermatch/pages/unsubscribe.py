@@ -1,5 +1,6 @@
 """One-click unsubscribe page."""
 
+import contextlib
 import logging
 import os
 
@@ -10,10 +11,8 @@ logger = logging.getLogger(__name__)
 # Inject secrets into env vars
 for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
     if key not in os.environ:
-        try:
+        with contextlib.suppress(KeyError, FileNotFoundError):
             os.environ[key] = st.secrets[key]
-        except (KeyError, FileNotFoundError):
-            pass
 
 from immermatch.db import deactivate_subscriber_by_token, get_admin_client  # noqa: E402
 

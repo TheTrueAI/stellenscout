@@ -19,7 +19,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -e ".[prod]"
+        run: pip install -e .
 
       - name: Run daily digest
         env:

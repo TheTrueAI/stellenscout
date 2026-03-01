@@ -239,8 +239,7 @@ _COUNTRY_LOCALISE_PATTERN = re.compile(
 def localise_query(query: str) -> str:
     """Replace English city and country names with their local equivalents."""
     query = _LOCALISE_PATTERN.sub(lambda m: CITY_LOCALISE[m.group(0).lower()], query)
-    query = _COUNTRY_LOCALISE_PATTERN.sub(lambda m: COUNTRY_LOCALISE[m.group(0).lower()], query)
-    return query
+    return _COUNTRY_LOCALISE_PATTERN.sub(lambda m: COUNTRY_LOCALISE[m.group(0).lower()], query)
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 """Streamlit web UI for Immermatch."""
 
+import contextlib
 import hashlib
 import logging
 import os
@@ -31,10 +32,8 @@ for key in (
     "APP_URL",
 ):
     if key not in os.environ:
-        try:
+        with contextlib.suppress(KeyError, FileNotFoundError):
             os.environ[key] = st.secrets[key]
-        except (KeyError, FileNotFoundError):
-            pass  # handled later via validation
 
 import sys as _sys  # noqa: E402
 from pathlib import Path as _Path  # noqa: E402
