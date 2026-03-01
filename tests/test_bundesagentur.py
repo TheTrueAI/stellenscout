@@ -586,13 +586,14 @@ class TestEnrich:
         provider = BundesagenturProvider(detail_strategy="html_only")
         with (
             patch("immermatch.bundesagentur._fetch_detail", return_value=html_detail),
-            patch("immermatch.bundesagentur._fetch_detail_api"),
+            patch("immermatch.bundesagentur._fetch_detail_api") as mock_api,
             patch("immermatch.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
         assert len(listings) == 1
         assert listings[0].description == "HTML only detail"
+        mock_api.assert_not_called()
 
 
 class TestSearchProviderProtocol:

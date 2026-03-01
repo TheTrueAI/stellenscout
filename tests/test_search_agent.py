@@ -288,6 +288,7 @@ class TestSearchAllQueries:
     def test_combined_provider_hard_quota_requires_30_each_before_stop(self):
         ba_provider = MagicMock()
         ba_provider.name = "Bundesagentur für Arbeit"
+        ba_provider.source_id = "bundesagentur"
         ba_jobs = [self._make_job(f"BA {i}", company=f"BA Co {i}", location="Berlin") for i in range(30)]
         for job in ba_jobs:
             job.source = "bundesagentur"
@@ -295,6 +296,7 @@ class TestSearchAllQueries:
 
         serp_provider = MagicMock()
         serp_provider.name = "SerpApi (Google Jobs)"
+        serp_provider.source_id = "serpapi"
         serp_jobs = [self._make_job(f"SERP {i}", company=f"SERP Co {i}", location="Berlin") for i in range(30)]
         for job in serp_jobs:
             job.source = "serpapi"

@@ -17,7 +17,13 @@ from pydantic import ValidationError
 
 from .llm import call_gemini, parse_json
 from .models import CandidateProfile, JobListing
-from .search_provider import CombinedSearchProvider, SearchProvider, get_provider, parse_provider_query
+from .search_provider import (
+    CombinedSearchProvider,
+    SearchProvider,
+    format_provider_query,
+    get_provider,
+    parse_provider_query,
+)
 
 # Re-export SerpApi helpers so existing imports keep working.
 from .serpapi_provider import BLOCKED_PORTALS as _BLOCKED_PORTALS  # noqa: F401
@@ -39,8 +45,13 @@ def _provider_quota_source_key(provider: SearchProvider) -> str:
     source_id = getattr(provider, "source_id", None)
     if isinstance(source_id, str) and source_id.strip():
         return source_id.strip().lower()
-    if getattr(provider, "name", None) == "Bundesagentur für Arbeit":
+    name = getattr(provider, "name", None)
+    if isinstance(name, str) and name == "Bundesagentur für Arbeit":
         return "bundesagentur"
+    if isinstance(name, str) and "serpapi" in name.lower():
+        return "serpapi"
+    if type(provider).__name__ == "SerpApiProvider":
+        return "serpapi"
     return type(provider).__name__.lower()
 
 
@@ -232,7 +243,7 @@ def generate_search_queries(
                 child_count,
                 child_provider,
             )
-            merged_queries.extend([f"provider={child_provider.name}::{query}" for query in child_queries])
+            merged_queries.extend([format_provider_query(child_provider.name, query) for query in child_queries])
 
         seen: set[str] = set()
         unique_queries: list[str] = []

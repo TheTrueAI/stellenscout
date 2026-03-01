@@ -77,7 +77,12 @@ class ResultCache:
     # 2. Queries  (keyed by profile hash + location)
     # ------------------------------------------------------------------
 
-    def load_queries(self, profile: CandidateProfile, location: str) -> list[str] | None:
+    def load_queries(
+        self,
+        profile: CandidateProfile,
+        location: str,
+        provider_fingerprint: str = "",
+    ) -> list[str] | None:
         data = self._load("queries.json")
         if data is None:
             return None
@@ -85,17 +90,26 @@ class ResultCache:
             return None
         if data.get("location") != location:
             return None
+        if data.get("provider_fingerprint", "") != provider_fingerprint:
+            return None
         queries = data.get("queries")
         if not isinstance(queries, list):
             return None
         return queries
 
-    def save_queries(self, profile: CandidateProfile, location: str, queries: list[str]) -> None:
+    def save_queries(
+        self,
+        profile: CandidateProfile,
+        location: str,
+        queries: list[str],
+        provider_fingerprint: str = "",
+    ) -> None:
         self._save(
             "queries.json",
             {
                 "profile_hash": _profile_hash(profile),
                 "location": location,
+                "provider_fingerprint": provider_fingerprint,
                 "queries": queries,
             },
         )

@@ -70,6 +70,10 @@ class TestQueriesCache:
         )
         assert cache.load_queries(other, "Munich") is None
 
+    def test_miss_on_different_provider_fingerprint(self, cache: ResultCache, profile: CandidateProfile):
+        cache.save_queries(profile, "Munich", ["q1"], provider_fingerprint="bundesagentur|serpapi")
+        assert cache.load_queries(profile, "Munich", provider_fingerprint="bundesagentur") is None
+
 
 class TestJobsCache:
     @freeze_time("2026-02-20")

@@ -20,6 +20,11 @@ _PROVIDER_QUERY_PREFIX = "provider="
 _PROVIDER_QUERY_SEPARATOR = "::"
 
 
+def format_provider_query(provider_name: str, query: str) -> str:
+    """Format a query with explicit provider routing metadata."""
+    return f"{_PROVIDER_QUERY_PREFIX}{provider_name}{_PROVIDER_QUERY_SEPARATOR}{query}"
+
+
 def parse_provider_query(query: str) -> tuple[str | None, str]:
     """Parse an optionally provider-targeted query.
 
@@ -35,6 +40,26 @@ def parse_provider_query(query: str) -> tuple[str | None, str]:
         if target_provider and clean_query.strip():
             return target_provider, clean_query.strip()
     return None, query
+
+
+def get_provider_fingerprint(provider: SearchProvider) -> str:
+    """Return a stable fingerprint for the active provider configuration.
+
+    Used by query cache to avoid reusing provider-targeted query sets when
+    provider configuration changes (e.g. SerpApi enabled/disabled).
+    """
+
+    def _provider_key(p: SearchProvider) -> str:
+        source_id = getattr(p, "source_id", None)
+        if isinstance(source_id, str) and source_id.strip():
+            return source_id.strip().lower()
+        name = getattr(p, "name", "")
+        if isinstance(name, str) and name.strip():
+            return name.strip().lower()
+        return type(p).__name__.lower()
+
+    providers = provider.providers if isinstance(provider, CombinedSearchProvider) else [provider]
+    return "|".join(sorted({_provider_key(p) for p in providers}))
 
 
 @runtime_checkable
@@ -93,6 +118,9 @@ class CombinedSearchProvider:
                     "Unknown targeted provider '%s' in query, falling back to all providers", target_provider
                 )
                 providers = self.providers
+
+        if not providers:
+            return []
 
         if max_results <= 0:
             return []

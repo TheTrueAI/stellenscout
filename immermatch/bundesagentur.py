@@ -234,6 +234,7 @@ class BundesagenturProvider:
     """
 
     name: str = "Bundesagentur für Arbeit"
+    source_id: str = "bundesagentur"
 
     def __init__(
         self,
