@@ -507,9 +507,12 @@ class TestEnrich:
         }
 
         provider = BundesagenturProvider()
-        with patch("immermatch.bundesagentur._fetch_detail", side_effect=lambda _c, refnr: details.get(refnr, {})):
-            with patch("immermatch.bundesagentur.httpx.Client"):
-                listings = provider._enrich(items)
+        with (
+            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.bundesagentur._fetch_detail", side_effect=lambda _c, refnr: details.get(refnr, {})),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            listings = provider._enrich(items)
 
         assert len(listings) == 2
         assert listings[0].description == "Desc A"
@@ -519,9 +522,12 @@ class TestEnrich:
         items = [_make_stellenangebot(refnr="r1", titel="Dev", arbeitgeber="Corp")]
 
         provider = BundesagenturProvider()
-        with patch("immermatch.bundesagentur._fetch_detail", return_value={}):
-            with patch("immermatch.bundesagentur.httpx.Client"):
-                listings = provider._enrich(items)
+        with (
+            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.bundesagentur._fetch_detail", return_value={}),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            listings = provider._enrich(items)
 
         assert len(listings) == 1
         # Uses fallback description from search fields
@@ -532,9 +538,12 @@ class TestEnrich:
         detail = _make_detail(partner_url="https://jobs.example.com", partner_name="Example")
 
         provider = BundesagenturProvider()
-        with patch("immermatch.bundesagentur._fetch_detail", return_value=detail):
-            with patch("immermatch.bundesagentur.httpx.Client"):
-                listings = provider._enrich(items)
+        with (
+            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.bundesagentur._fetch_detail", return_value=detail),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            listings = provider._enrich(items)
 
         assert len(listings[0].apply_options) == 2
         assert listings[0].apply_options[1].source == "Example"
@@ -569,6 +578,21 @@ class TestEnrich:
 
         assert len(listings) == 1
         assert listings[0].description == "API detail"
+
+    def test_html_only_strategy_uses_html_detail(self) -> None:
+        items = [_make_stellenangebot(refnr="r1", titel="Dev", arbeitgeber="Corp")]
+        html_detail = _make_detail(description="<b>HTML only detail</b>")
+
+        provider = BundesagenturProvider(detail_strategy="html_only")
+        with (
+            patch("immermatch.bundesagentur._fetch_detail", return_value=html_detail),
+            patch("immermatch.bundesagentur._fetch_detail_api"),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            listings = provider._enrich(items)
+
+        assert len(listings) == 1
+        assert listings[0].description == "HTML only detail"
 
 
 class TestSearchProviderProtocol:
