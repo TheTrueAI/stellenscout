@@ -83,13 +83,13 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 
 ## Phase 3: Growth & Scale
 
-### 3.1 — SerpAPI Cost Optimization (Open Issue)
-- [ ] **Deduplicate queries more aggressively** — normalize queries before searching, semantic dedup
-- [ ] **Cache search results in DB per (query, location, date)** — share across subscribers
-- [ ] **Evaluate alternative search APIs** — Google Custom Search, Bing Jobs API, or direct scraping as fallback
-- [ ] **Implement search budget per run** — e.g., max 20 API calls/day total across all subscribers
-- [ ] **Add adaptive query stopping** — stop low-yield queries early based on jobs-per-call threshold
-- [ ] **Reuse cross-day popular query results** — short TTL for high-volume locations to reduce repeated calls
+### 3.1 — Search Provider Expansion
+- [x] **Switch to Bundesagentur für Arbeit API** — free, verified German job listings; eliminates SerpAPI cost for German market
+- [x] **Implement SearchProvider abstraction** — pluggable protocol for multiple job-search backends
+- [x] **Extract SerpApiProvider** — retained for future non-German markets behind the SearchProvider interface
+- [ ] **Add per-country provider routing** — auto-select provider based on target location (e.g., BA for Germany, SerpApi for others)
+- [ ] **Evaluate additional country-specific APIs** — VDAB (Belgium), Pôle Emploi (France), etc.
+- [ ] **Implement provider fallback strategy** — graceful degradation when a provider is down
 
 ### 3.2 — Stale Job Detection (Open Issue)
 - [ ] **HEAD request validation** — before including a job, check if the apply URL returns 200
@@ -115,7 +115,6 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 
 ### 3.6 — Reliability & Abuse Protection (Potential Risks)
 - [ ] **Add idempotency keys for pipeline runs** — prevent duplicate digests/emails on retries
-- [ ] **Implement provider fallback strategy** — graceful degradation when Gemini/SerpAPI is down
 - [ ] **Add anti-abuse controls** — basic bot detection and per-email/IP throttling around upload/subscribe endpoints
 - [ ] **Set SLOs + runbooks** — define uptime/error budgets and incident response steps for digest failures
 

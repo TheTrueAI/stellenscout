@@ -70,7 +70,6 @@ Copy `.env.example` to `.env` and fill in your keys. The app also supports `.str
 | Variable | Required | Description |
 |---|---|---|
 | `GOOGLE_API_KEY` | Yes | Google AI Studio API key ([get one](https://aistudio.google.com/app/apikey)) |
-| `SERPAPI_KEY` | Yes | SerpApi key for Google Jobs search ([get one](https://serpapi.com/)) |
 | `SUPABASE_URL` | For newsletter | Supabase project URL ([dashboard](https://supabase.com/dashboard)) |
 | `SUPABASE_KEY` | For newsletter | Supabase anon/publishable key |
 | `SUPABASE_SERVICE_KEY` | For newsletter | Supabase service-role key (bypasses RLS) |
@@ -81,7 +80,7 @@ Copy `.env.example` to `.env` and fill in your keys. The app also supports `.str
 | `IMPRESSUM_ADDRESS` | For newsletter | Legal notice: your postal address |
 | `IMPRESSUM_EMAIL` | For newsletter | Legal notice: your contact email |
 
-> **Note:** The one-time job search only requires `GOOGLE_API_KEY` and `SERPAPI_KEY`. The Supabase, Resend, and Impressum variables are only needed for the daily digest newsletter feature.
+> **Note:** The one-time job search only requires `GOOGLE_API_KEY` (job listings come from the free Bundesagentur für Arbeit API). The Supabase, Resend, and Impressum variables are only needed for the daily digest newsletter feature.
 
 ## Database Setup
 

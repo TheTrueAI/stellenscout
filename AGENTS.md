@@ -65,7 +65,34 @@ This document defines the persona, context, and instruction sets for the AI agen
 
 **Role:** Search Engine Optimization Specialist
 **Input:** The "Profiler" JSON summary + User's desired location (e.g., "Munich, Germany").
-**Output:** A JSON array of 20 search query strings optimized for Google Jobs.
+**Output:** A JSON array of 20 search query strings.
+
+The system prompt is selected based on the active **SearchProvider**:
+
+### 2a. BA Headhunter Prompt (Bundesagentur für Arbeit — default)
+
+Used when `provider.name == "Bundesagentur für Arbeit"`. Generates keyword-only queries (no location tokens) because the BA API has a dedicated `wo` parameter for location filtering.
+
+**System Prompt:**
+> You are a Search Specialist generating keyword queries for the German Federal Employment Agency job search API (Bundesagentur für Arbeit).
+>
+> Based on the candidate's profile, generate distinct keyword queries to find relevant job openings. The API searches across German job listings and handles location filtering separately.
+>
+> IMPORTANT RULES:
+> - Queries must be SHORT: 1-3 words ONLY
+> - Do NOT include any city, region, or country names — location is handled by the API
+> - Do NOT include "remote", "hybrid", or similar work-mode keywords
+> - Include BOTH German and English job titles (the API indexes both)
+> - Use different synonyms for the same role
+>
+> Strategy:
+> 1. First third: Exact role titles in German (e.g., "Softwareentwickler", "Datenanalyst", "Projektleiter")
+> 2. Second third: Exact role titles in English (e.g., "Software Developer", "Data Analyst", "Project Manager")
+> 3. Final third: Technology + role combinations and broader terms (e.g., "Python Entwickler", "Machine Learning", "DevOps Engineer")
+
+### 2b. SerpApi Headhunter Prompt (Google Jobs — retained for future use)
+
+Used when `provider.name != "Bundesagentur für Arbeit"` (e.g., SerpApiProvider for non-German markets). Generates location-enriched queries optimised for Google Jobs.
 
 **System Prompt:**
 > You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings.
@@ -74,45 +101,32 @@ This document defines the persona, context, and instruction sets for the AI agen
 >
 > CRITICAL: Always use LOCAL names, not English ones. For example use "München" not "Munich", "Köln" not "Cologne", "Wien" not "Vienna", "Zürich" not "Zurich", "Praha" not "Prague", "Deutschland" not "Germany".
 >
-> **Adapt your strategy to the SCOPE of the Target Location:**
->
-> A) If the location is a CITY (e.g. "München", "Amsterdam"):
->    1. Queries 1-5: Exact role titles + local city name
->    2. Queries 6-10: Broader role synonyms + city
->    3. Queries 11-15: Industry/domain keywords without city or with "remote"
->    4. Queries 16-20: Very broad industry terms
->
-> B) If the location is a COUNTRY (e.g. "Germany", "Netherlands"):
->    1. Queries 1-5: Exact role titles + local country name (e.g. "Data Engineer Deutschland")
->    2. Queries 6-10: Same roles + major cities in that country (e.g. "Backend Developer München", "Backend Developer Berlin")
->    3. Queries 11-15: Broader role synonyms + country or "remote"
->    4. Queries 16-20: Very broad industry terms
->
-> C) If the location is "remote", "worldwide", or similar:
->    1. Queries 1-10: Exact role titles + "remote"
->    2. Queries 11-15: Broader role synonyms + "remote"
->    3. Queries 16-20: Very broad industry terms without any location
->
-> Additional strategy:
-> - Include BOTH English and local-language job titles for the target country
-> - Use different synonyms for the same role (e.g., "Manager", "Lead", "Specialist", "Analyst")
+> *(Full location-strategy sections A/B/C as before)*
 
-**Generation Config:**
+**Generation Config (both prompts):**
 - Temperature: 0.5
 - Max tokens: 8192
 
-**Post-processing:**
-- Queries missing a location keyword (words from the user's location string, or "remote") get the target location auto-appended before searching.
-- English city names are automatically translated to local names (e.g., Munich → München, Vienna → Wien, Cologne → Köln) via a regex-based replacement in `search_agent.py:_localise_query()`.
-- English country names are also translated to local names (e.g., Germany → Deutschland, Austria → Österreich, Switzerland → Schweiz) via `_COUNTRY_LOCALISE` and `_COUNTRY_LOCALISE_PATTERN`.
-- Both city and country localisation are applied to the query itself *and* to the auto-appended location suffix.
+**Search Provider Architecture:**
 
-**Search behaviour:**
-- Google `gl=` country code is inferred from the location string via `_infer_gl()` (maps ~60 country/city names to 2-letter codes, defaults to `"de"` for non-remote locations).
-- For purely remote/global searches (location contains only tokens like "remote", "worldwide", "global", "anywhere", "weltweit"), `_is_remote_only()` returns `True` and `_infer_gl()` returns `None` — the `gl` param is omitted from SerpApi so results aren't country-biased.
-- SerpApi's `location` parameter is passed for non-remote searches (the raw user-supplied string, e.g. "Munich, Germany") for geographic filtering. Omitted for remote searches.
-- Searches stop early once 50 unique jobs have been collected, saving SerpAPI quota.
-- Listings from questionable job portals (BeBee, Jooble, Adzuna, etc.) are filtered out at parse time. Jobs with no remaining apply links after filtering are discarded entirely.
+The search pipeline uses a pluggable `SearchProvider` protocol (defined in `search_provider.py`):
+
+```python
+class SearchProvider(Protocol):
+    name: str
+    def search(self, query: str, location: str, max_results: int = 50) -> list[JobListing]: ...
+```
+
+- **`BundesagenturProvider`** (default) — queries the free Bundesagentur für Arbeit REST API (`rest.arbeitsagentur.de`). Handles pagination, parallel detail-fetching, and retry logic internally.
+- **`SerpApiProvider`** — wraps Google Jobs via SerpApi. Handles localisation, `gl` code inference, and blocked portal filtering internally.
+- **`get_provider(location)`** factory — currently always returns `BundesagenturProvider`. Future: route by country.
+
+**Search orchestration (`search_all_queries()`):**
+- Iterates queries in parallel (`ThreadPoolExecutor`, max 5 workers)
+- Each query is forwarded to `provider.search(query, location, max_results=jobs_per_query)`
+- Deduplicates by `title|company_name`
+- Stops early once 50 unique jobs are collected
+- Supports `on_progress` and `on_jobs_found` callbacks for streaming results
 
 ---
 
@@ -192,7 +206,14 @@ MODEL = "gemini-3-flash-preview"
 MAX_RETRIES = 5
 BASE_DELAY = 3  # seconds, exponential backoff with jitter
 
-# SerpApi Google Jobs parameters
+# Bundesagentur für Arbeit API (default provider)
+BA_BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service"
+BA_API_KEY = "jobboerse-jobsuche"  # pragma: allowlist secret  # public API key, not a secret
+# Search endpoint: /pc/v4/jobs (params: was, wo, veroeffentlichtseit, size, page, angebotsart)
+# Detail endpoint: /pc/v2/jobdetails/{hashID}
+# Default: veroeffentlichtseit=7 (last 7 days only)
+
+# SerpApi Google Jobs parameters (retained for future non-German markets)
 SERPAPI_PARAMS = {
     "engine": "google_jobs",
     "hl": "en",           # Language: English (for broader results)
@@ -203,11 +224,12 @@ SERPAPI_PARAMS = {
 
 ### Rate Limiting & Retry
 
-- Exponential backoff with jitter for `429 RESOURCE_EXHAUSTED` and `503 UNAVAILABLE` errors
+- Exponential backoff with jitter for `429 RESOURCE_EXHAUSTED` and `503 UNAVAILABLE` errors (Gemini)
 - Centralized in `llm.py:call_gemini()` — 5 retries with `3 * 2^attempt + random(0,1)` second delays
-- SerpApi: 100 searches/month on free tier
+- Bundesagentur API: retry up to 3 times on 5xx errors with exponential backoff
+- SerpApi: 100 searches/month on free tier (not currently used)
 
-### Blocked Job Portals
+### Blocked Job Portals (SerpApi only)
 
 Jobs from the following portals are discarded during search result parsing (see `search_agent.py:_BLOCKED_PORTALS`):
 
@@ -262,6 +284,7 @@ class JobListing(BaseModel):
     description: str = ""
     link: str = ""
     posted_at: str = ""
+    source: str = ""                     # search provider that produced this listing
     apply_options: list[ApplyOption] = []  # direct apply links (LinkedIn, career page, etc.)
 
 class JobEvaluation(BaseModel):
@@ -379,7 +402,7 @@ Per-subscriber pipeline, designed to run in GitHub Actions (or any cron schedule
 
 **Privacy:** All log messages reference subscribers by UUID (`sub=<id>`), never by email address. Email addresses are only used in the `send_daily_digest()` call.
 
-Required env vars: `GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`.
+Required env vars: `GOOGLE_API_KEY`, `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `RESEND_API_KEY`, `RESEND_FROM`, `APP_URL`.
 
 ### Email Templates (`emailer.py`)
 - `send_daily_digest(user_email, jobs, unsubscribe_url, target_location)` — card-style job listings with score pill badges, location pins, "View Job" CTA buttons, match summary stats (excellent/good counts), and target location in header
@@ -479,7 +502,8 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 |---|---|---|
 | `test_llm.py` (12 tests) | `llm.py` | `parse_json()` (8 cases: raw, fenced, embedded, nested, errors) + `call_gemini()` retry logic (4 cases: success, ServerError retry, 429 retry, non-429 immediate raise) |
 | `test_evaluator_agent.py` (8 tests) | `evaluator_agent.py` | `evaluate_job()` (4 cases: happy path, API error fallback, parse error fallback, non-dict fallback) + `evaluate_all_jobs()` (3 cases: sorted output, progress callback, empty list) + `generate_summary()` (2 cases: score distribution in prompt, missing skills in prompt) |
-| `test_search_agent.py` (32 tests) | `search_agent.py` | `_is_remote_only()` (remote tokens, non-remote) + `_infer_gl()` (known locations, unknown default, remote returns None, case insensitive) + `_localise_query()` (city names, country names, case insensitive, multiple cities) + `_parse_job_results()` (valid, blocked portals, mixed, empty, no-apply-links) + `search_all_queries()` (location auto-append with localisation, no double-append, early stopping) + `TestLlmJsonRecovery` (profile_candidate and generate_search_queries retry/recovery) |
+| `test_search_agent.py` (35 tests) | `search_agent.py` | `_is_remote_only()` (remote tokens, non-remote) + `_infer_gl()` (known locations, unknown default, remote returns None, case insensitive) + `_localise_query()` (city names, country names, case insensitive, multiple cities) + `_parse_job_results()` (valid, blocked portals, mixed, empty, no-apply-links) + `search_all_queries()` (provider delegation, dedup, early stopping, callbacks, default provider) + `generate_search_queries()` prompt selection (BA vs SerpApi) + `TestLlmJsonRecovery` (profile_candidate and generate_search_queries retry/recovery) |
+| `test_bundesagentur.py` (22 tests) | `bundesagentur.py` | `_build_ba_link()`, `_parse_location()`, `_parse_search_results()`, `_stub_to_listing()`, `BundesagenturProvider.search()` (basic merge, pagination, HTTP errors, empty results, detail fetch failures), `SearchProvider` protocol conformance |
 | `test_cache.py` (17 tests) | `cache.py` | All cache operations: profile, queries, jobs (merge/dedup), evaluations, unevaluated job filtering |
 | `test_cv_parser.py` (6 tests) | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
 | `test_models.py` (23 tests) | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
