@@ -10,7 +10,7 @@ Per-subscriber pipeline:
   6. For each subscriber: evaluate unseen jobs, filter, email, log.
 
 Required env vars:
-    GOOGLE_API_KEY, SERPAPI_KEY          — existing search/LLM keys
+    GOOGLE_API_KEY                      — Gemini LLM key
     SUPABASE_URL, SUPABASE_KEY          — Supabase credentials (anon)
     SUPABASE_SERVICE_KEY                — Supabase service-role key
     RESEND_API_KEY, RESEND_FROM         — Resend email credentials
@@ -125,7 +125,7 @@ def main() -> int:
             if key not in all_jobs:
                 all_jobs[key] = job
 
-    log.info("Found %d unique jobs total from SerpApi", len(all_jobs))
+    log.info("Found %d unique jobs total", len(all_jobs))
     if not all_jobs:
         log.info("No jobs found — exiting.")
         return 0

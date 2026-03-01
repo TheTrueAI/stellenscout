@@ -10,7 +10,6 @@ from streamlit.testing.v1 import AppTest
 
 _FAKE_ENV = {
     "GOOGLE_API_KEY": "fake-google-key",  # pragma: allowlist secret
-    "SERPAPI_KEY": "fake-serpapi-key",  # pragma: allowlist secret
     "SUPABASE_URL": "https://fake.supabase.co",
     "SUPABASE_KEY": "fake-anon-key",  # pragma: allowlist secret
     "SUPABASE_SERVICE_KEY": "fake-service-key",  # pragma: allowlist secret

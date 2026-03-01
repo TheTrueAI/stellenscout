@@ -23,7 +23,6 @@ jobs_per_query = 10  # default value
 # ---------------------------------------------------------------------------
 for key in (
     "GOOGLE_API_KEY",
-    "SERPAPI_KEY",
     "SUPABASE_URL",
     "SUPABASE_KEY",
     "SUPABASE_SERVICE_KEY",
@@ -476,8 +475,6 @@ def _keys_ok() -> bool:
     missing = []
     if not os.getenv("GOOGLE_API_KEY"):
         missing.append("GOOGLE_API_KEY")
-    if not os.getenv("SERPAPI_KEY"):
-        missing.append("SERPAPI_KEY")
     if missing:
         st.error(
             f"Missing API key(s): **{', '.join(missing)}**. "
@@ -535,7 +532,7 @@ with st.sidebar:
     st.divider()
     st.caption(
         "Built with [Streamlit](https://streamlit.io) • "
-        "Powered by Gemini & SerpApi  \n"
+        "Powered by Gemini & Bundesagentur für Arbeit  \n"
         "[GitHub](https://github.com/TheTrueAI/immermatch) · "
         "[Legal Notice / Impressum](/impressum) · [Privacy Policy](/privacy)"
     )
@@ -625,7 +622,8 @@ else:
                 location = st.text_input(
                     "Where do you want to work?",
                     max_chars=100,
-                    placeholder="e.g. Munich, Germany, remote...",
+                    placeholder="e.g. Munich, Berlin, Hamburg...",
+                    help="Currently searches German job listings via Bundesagentur für Arbeit.",
                 )
                 run_button = st.form_submit_button(
                     "🚀 Find Jobs",
