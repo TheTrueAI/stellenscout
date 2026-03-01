@@ -61,13 +61,10 @@ def _parse_location(arbeitsort: dict) -> str:
     parts: list[str] = []
     if ort := arbeitsort.get("ort"):
         parts.append(ort)
-    if region := arbeitsort.get("region"):
-        # Avoid duplicating city name when region == city
-        if region != ort:
-            parts.append(region)
-    if land := arbeitsort.get("land"):
-        if land not in parts:
-            parts.append(land)
+    if (region := arbeitsort.get("region")) and region != ort:
+        parts.append(region)
+    if (land := arbeitsort.get("land")) and land not in parts:
+        parts.append(land)
     return ", ".join(parts) if parts else "Germany"
 
 
@@ -339,19 +336,18 @@ class BundesagenturProvider:
                 },
                 follow_redirects=True,
             ) as html_client,
+            ThreadPoolExecutor(max_workers=self._detail_workers) as pool,
         ):
-            with ThreadPoolExecutor(max_workers=self._detail_workers) as pool:
-                future_to_refnr = {
-                    pool.submit(self._get_detail, api_client, html_client, item["refnr"]): item["refnr"]
-                    for item in items
-                }
-                for future in as_completed(future_to_refnr):
-                    refnr = future_to_refnr[future]
-                    try:
-                        details[refnr] = future.result()
-                    except Exception:
-                        logger.exception("Failed to fetch detail for %s", refnr)
-                        details[refnr] = {}
+            future_to_refnr = {
+                pool.submit(self._get_detail, api_client, html_client, item["refnr"]): item["refnr"] for item in items
+            }
+            for future in as_completed(future_to_refnr):
+                refnr = future_to_refnr[future]
+                try:
+                    details[refnr] = future.result()
+                except Exception:
+                    logger.exception("Failed to fetch detail for %s", refnr)
+                    details[refnr] = {}
 
         listings: list[JobListing] = []
         for item in items:

@@ -22,7 +22,7 @@ class FakeSessionState(dict):
         try:
             return self[name]
         except KeyError:
-            raise AttributeError(name)
+            raise AttributeError(name) from None
 
     def __setattr__(self, name: str, value):
         self[name] = value

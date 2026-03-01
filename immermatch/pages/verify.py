@@ -1,5 +1,6 @@
 """Double Opt-In confirmation page."""
 
+import contextlib
 import logging
 import os
 
@@ -20,10 +21,8 @@ for key in (
     "IMPRESSUM_EMAIL",
 ):
     if key not in os.environ:
-        try:
+        with contextlib.suppress(KeyError, FileNotFoundError):
             os.environ[key] = st.secrets[key]
-        except (KeyError, FileNotFoundError):
-            pass
 
 from immermatch.db import SUBSCRIPTION_DAYS, confirm_subscriber, get_admin_client, set_subscriber_expiry  # noqa: E402
 
