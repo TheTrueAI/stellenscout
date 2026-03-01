@@ -67,7 +67,7 @@ class ApplyOption(BaseModel):
 
 
 class JobListing(BaseModel):
-    """A job listing from SerpApi."""
+    """A job listing returned by a search provider."""
 
     title: str
     company_name: str
@@ -75,6 +75,7 @@ class JobListing(BaseModel):
     description: str = ""
     link: str = ""
     posted_at: str = ""
+    source: str = Field(default="", description="Search provider that produced this listing (e.g. 'bundesagentur')")
     apply_options: list[ApplyOption] = Field(
         default_factory=list, description="List of direct application links (LinkedIn, company site, etc.)"
     )
