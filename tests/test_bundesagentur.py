@@ -12,6 +12,7 @@ from immermatch.bundesagentur import (
     _build_ba_link,
     _clean_html,
     _fetch_detail,
+    _fetch_detail_api,
     _parse_listing,
     _parse_location,
     _parse_search_results,
@@ -272,6 +273,22 @@ class TestFetchDetail:
             result = _fetch_detail(client, "REF-123")
         assert result == detail
 
+    def test_retries_on_403_then_succeeds(self) -> None:
+        blocked_resp = MagicMock()
+        blocked_resp.status_code = 403
+
+        detail = {"stellenangebotsBeschreibung": "ok"}
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.text = _make_ng_state_html(detail)
+
+        client = MagicMock(spec=httpx.Client)
+        client.get.side_effect = [blocked_resp, ok_resp]
+
+        with patch("immermatch.bundesagentur.time.sleep"):
+            result = _fetch_detail(client, "REF-123")
+        assert result == detail
+
     def test_retries_on_network_error(self) -> None:
         detail = {"stellenangebotsBeschreibung": "recovered"}
         ok_resp = MagicMock()
@@ -434,6 +451,51 @@ class TestBundesagenturProviderErrors:
             items = provider._search_items("Dev", "Berlin", max_results=50)
         assert items == []
 
+    def test_get_with_retry_retries_on_403(self) -> None:
+        blocked_resp = MagicMock()
+        blocked_resp.status_code = 403
+
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+
+        client = MagicMock(spec=httpx.Client)
+        client.get.side_effect = [blocked_resp, ok_resp]
+
+        with patch("immermatch.bundesagentur.time.sleep"):
+            result = BundesagenturProvider._get_with_retry(client, "https://example.com", {})
+
+        assert result is ok_resp
+
+
+class TestFetchDetailApi:
+    def test_fetches_json_detail(self) -> None:
+        detail = {"stellenangebotsBeschreibung": "API detail"}
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.json.return_value = detail
+
+        client = MagicMock(spec=httpx.Client)
+        client.get.return_value = ok_resp
+
+        assert _fetch_detail_api(client, "REF-123") == detail
+
+    def test_retries_on_403_then_succeeds(self) -> None:
+        blocked_resp = MagicMock()
+        blocked_resp.status_code = 403
+
+        detail = {"stellenangebotsBeschreibung": "API detail"}
+        ok_resp = MagicMock()
+        ok_resp.status_code = 200
+        ok_resp.json.return_value = detail
+
+        client = MagicMock(spec=httpx.Client)
+        client.get.side_effect = [blocked_resp, ok_resp]
+
+        with patch("immermatch.bundesagentur.time.sleep"):
+            result = _fetch_detail_api(client, "REF-123")
+
+        assert result == detail
+
 
 class TestEnrich:
     """Test the _enrich detail-fetching pipeline."""
@@ -481,6 +543,36 @@ class TestEnrich:
         assert len(listings[0].apply_options) == 2
         assert listings[0].apply_options[1].source == "Example"
         assert listings[0].apply_options[1].url == "https://jobs.example.com"
+
+    def test_api_then_html_strategy_falls_back_to_html(self) -> None:
+        items = [_make_stellenangebot(refnr="r1", titel="Dev", arbeitgeber="Corp")]
+        html_detail = _make_detail(description="<b>HTML fallback</b>")
+
+        provider = BundesagenturProvider(detail_strategy="api_then_html")
+        with (
+            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.bundesagentur._fetch_detail", return_value=html_detail),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            listings = provider._enrich(items)
+
+        assert len(listings) == 1
+        assert listings[0].description == "HTML fallback"
+
+    def test_api_only_strategy_uses_api_detail(self) -> None:
+        items = [_make_stellenangebot(refnr="r1", titel="Dev", arbeitgeber="Corp")]
+        api_detail = {"stellenangebotsBeschreibung": "API detail"}
+
+        provider = BundesagenturProvider(detail_strategy="api_only")
+        with (
+            patch("immermatch.bundesagentur._fetch_detail_api", return_value=api_detail),
+            patch("immermatch.bundesagentur._fetch_detail", return_value={}),
+            patch("immermatch.bundesagentur.httpx.Client"),
+        ):
+            listings = provider._enrich(items)
+
+        assert len(listings) == 1
+        assert listings[0].description == "API detail"
 
 
 class TestSearchProviderProtocol:

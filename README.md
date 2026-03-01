@@ -63,6 +63,16 @@ The app uses four AI agent personas powered by Gemini:
 
 Jobs are fetched from Google Jobs via SerpApi, deduplicated, and scored in parallel.
 
+## Bundesagentur Provider Tuning
+
+The Bundesagentur provider in `immermatch/bundesagentur.py` supports a configurable detail-fetch strategy:
+
+- `api_then_html` (default): first tries `/pc/v4/jobdetails/{refnr}`, then falls back to scraping the public job-detail page if needed
+- `api_only`: uses only the API detail endpoint
+- `html_only`: uses only the public detail page parsing path
+
+This helps keep job descriptions available even when one upstream detail path is unstable.
+
 ## Environment Variables
 
 Copy `.env.example` to `.env` and fill in your keys. The app also supports `.streamlit/secrets.toml` for Streamlit Cloud deployments.

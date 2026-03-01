@@ -20,6 +20,7 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Literal
 
 import httpx
 
@@ -35,11 +36,13 @@ _DEFAULT_HEADERS = {
 }
 
 # How many days back to accept listings (keeps results fresh).
-_DEFAULT_DAYS_PUBLISHED = 7
+_DEFAULT_DAYS_PUBLISHED = 28
 
 # Retry settings for transient server errors.
 _MAX_RETRIES = 3
 _BASE_DELAY = 2  # seconds
+_MAX_PAGES = 100
+_BACKOFF_JITTER = 0.5
 
 # Regex to extract the Angular SSR state from the detail page.
 _NG_STATE_RE = re.compile(
@@ -97,8 +100,8 @@ def _fetch_detail(client: httpx.Client, refnr: str) -> dict:
                     return state.get("jobdetail", {})  # type: ignore[no-any-return]
                 logger.debug("BA detail %s: ng-state not found in HTML", refnr)
                 return {}
-            if resp.status_code in {429, 500, 502, 503}:
-                delay = _BASE_DELAY * (2**attempt)
+            if resp.status_code in {403, 429, 500, 502, 503}:
+                delay = _BASE_DELAY * (2**attempt) + _BACKOFF_JITTER
                 logger.warning(
                     "BA detail page %s returned %s, retrying in %ss",
                     refnr,
@@ -111,11 +114,46 @@ def _fetch_detail(client: httpx.Client, refnr: str) -> dict:
             return {}
         except httpx.HTTPError as exc:
             last_exc = exc
-            delay = _BASE_DELAY * (2**attempt)
+            delay = _BASE_DELAY * (2**attempt) + _BACKOFF_JITTER
             logger.warning("BA detail %s network error: %s, retrying in %ss", refnr, exc, delay)
             time.sleep(delay)
     if last_exc:
         logger.error("BA detail %s failed after %d retries: %s", refnr, _MAX_RETRIES, last_exc)
+    return {}
+
+
+def _fetch_detail_api(client: httpx.Client, refnr: str) -> dict:
+    """Fetch structured job detail JSON from the BA API using plain ``refnr``.
+
+    Returns the detail dict on success, or ``{}`` on any failure.
+    """
+    url = f"{_BASE_URL}/pc/v4/jobdetails/{refnr}"
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = client.get(url)
+            if resp.status_code == 200:
+                data = resp.json()
+                return data if isinstance(data, dict) else {}
+            if resp.status_code in {403, 429, 500, 502, 503}:
+                delay = _BASE_DELAY * (2**attempt) + _BACKOFF_JITTER
+                logger.warning(
+                    "BA API detail %s returned %s, retrying in %ss",
+                    refnr,
+                    resp.status_code,
+                    delay,
+                )
+                time.sleep(delay)
+                continue
+            logger.debug("BA API detail %s returned %s, skipping", refnr, resp.status_code)
+            return {}
+        except (httpx.HTTPError, ValueError) as exc:
+            last_exc = exc
+            delay = _BASE_DELAY * (2**attempt) + _BACKOFF_JITTER
+            logger.warning("BA API detail %s error: %s, retrying in %ss", refnr, exc, delay)
+            time.sleep(delay)
+    if last_exc:
+        logger.error("BA API detail %s failed after %d retries: %s", refnr, _MAX_RETRIES, last_exc)
     return {}
 
 
@@ -163,9 +201,11 @@ def _parse_listing(item: dict, detail: dict | None = None) -> JobListing | None:
     # plus an external career-site link when available in the detail data.
     apply_options = [ApplyOption(source="Arbeitsagentur", url=link)]
     if detail:
-        ext_url = detail.get("allianzpartnerUrl", "")
+        ext_url = str(detail.get("allianzpartnerUrl", "")).strip()
         if ext_url:
-            if not ext_url.startswith("http"):
+            if ext_url.startswith("//"):
+                ext_url = f"https:{ext_url}"
+            elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", ext_url):
                 ext_url = f"https://{ext_url}"
             ext_name = detail.get("allianzpartnerName", "Company Website")
             apply_options.append(ApplyOption(source=ext_name, url=ext_url))
@@ -199,9 +239,11 @@ class BundesagenturProvider:
         self,
         days_published: int = _DEFAULT_DAYS_PUBLISHED,
         detail_workers: int = 5,
+        detail_strategy: Literal["api_then_html", "api_only", "html_only"] = "api_then_html",
     ) -> None:
         self._days_published = days_published
         self._detail_workers = detail_workers
+        self._detail_strategy = detail_strategy
 
     # ------------------------------------------------------------------
     # Public API (SearchProvider protocol)
@@ -250,7 +292,7 @@ class BundesagenturProvider:
         page = 1  # BA API pages are 1-indexed
 
         with httpx.Client(headers=_DEFAULT_HEADERS, timeout=30) as client:
-            while len(items) < max_results:
+            while len(items) < max_results and page <= _MAX_PAGES:
                 params: dict[str, str | int] = {
                     "was": query,
                     "size": page_size,
@@ -277,22 +319,31 @@ class BundesagenturProvider:
 
                 page += 1
 
+        if page > _MAX_PAGES and len(items) < max_results:
+            logger.warning("Reached BA page cap (%s) while searching query=%r", _MAX_PAGES, query)
+
         return items[:max_results]
 
     def _enrich(self, items: list[dict]) -> list[JobListing]:
         """Fetch detail pages in parallel and build ``JobListing`` objects."""
         # Map refnr → detail dict (fetched in parallel).
         details: dict[str, dict] = {}
-        with httpx.Client(
-            timeout=30,
-            headers={
-                "User-Agent": "Mozilla/5.0 (compatible; Immermatch/1.0)",
-                "Accept": "text/html",
-            },
-            follow_redirects=True,
-        ) as client:
+        with (
+            httpx.Client(headers=_DEFAULT_HEADERS, timeout=30) as api_client,
+            httpx.Client(
+                timeout=30,
+                headers={
+                    "User-Agent": "Mozilla/5.0 (compatible; Immermatch/1.0)",
+                    "Accept": "text/html",
+                },
+                follow_redirects=True,
+            ) as html_client,
+        ):
             with ThreadPoolExecutor(max_workers=self._detail_workers) as pool:
-                future_to_refnr = {pool.submit(_fetch_detail, client, item["refnr"]): item["refnr"] for item in items}
+                future_to_refnr = {
+                    pool.submit(self._get_detail, api_client, html_client, item["refnr"]): item["refnr"]
+                    for item in items
+                }
                 for future in as_completed(future_to_refnr):
                     refnr = future_to_refnr[future]
                     try:
@@ -309,6 +360,18 @@ class BundesagenturProvider:
                 listings.append(listing)
         return listings
 
+    def _get_detail(self, api_client: httpx.Client, html_client: httpx.Client, refnr: str) -> dict:
+        """Resolve job detail using the configured endpoint strategy."""
+        if self._detail_strategy == "api_only":
+            return _fetch_detail_api(api_client, refnr)
+        if self._detail_strategy == "html_only":
+            return _fetch_detail(html_client, refnr)
+
+        detail = _fetch_detail_api(api_client, refnr)
+        if detail:
+            return detail
+        return _fetch_detail(html_client, refnr)
+
     @staticmethod
     def _get_with_retry(
         client: httpx.Client,
@@ -322,8 +385,8 @@ class BundesagenturProvider:
                 resp = client.get(url, params=params)
                 if resp.status_code == 200:
                     return resp
-                if resp.status_code in {429, 500, 502, 503}:
-                    delay = _BASE_DELAY * (2**attempt)
+                if resp.status_code in {403, 429, 500, 502, 503}:
+                    delay = _BASE_DELAY * (2**attempt) + _BACKOFF_JITTER
                     logger.warning("BA search %s returned %s, retry in %ss", url, resp.status_code, delay)
                     time.sleep(delay)
                     continue
@@ -331,7 +394,7 @@ class BundesagenturProvider:
                 return None
             except httpx.HTTPError as exc:
                 last_exc = exc
-                delay = _BASE_DELAY * (2**attempt)
+                delay = _BASE_DELAY * (2**attempt) + _BACKOFF_JITTER
                 logger.warning("BA search network error: %s, retry in %ss", exc, delay)
                 time.sleep(delay)
         if last_exc:
