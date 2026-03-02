@@ -1,0 +1,41 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Streamlit App",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": ["run", "immermatch/app.py"],
+      "cwd": "${workspaceFolder}",
+      "env": {},
+      "justMyCode": true
+    },
+    {
+      "name": "pytest: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}", "-x", "-v"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "pytest: All Tests",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["tests/", "-x", "-v"],
+      "cwd": "${workspaceFolder}",
+      "justMyCode": false
+    },
+    {
+      "name": "Daily Task",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/daily_task.py",
+      "cwd": "${workspaceFolder}",
+      "justMyCode": true
+    }
+  ]
+}

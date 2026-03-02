@@ -1,7 +1,6 @@
 {
-  "name": "Python 3",
-  // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
-  "image": "mcr.microsoft.com/devcontainers/python",
+  "name": "Immermatch Dev",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13",
   "customizations": {
     "codespaces": {
       "openFiles": [
@@ -13,11 +12,15 @@
       "settings": {},
       "extensions": [
         "ms-python.python",
-        "ms-python.vscode-pylance"
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "tamasfe.even-better-toml",
+        "GitHub.copilot",
+        "GitHub.copilot-chat"
       ]
     }
   },
-  "updateContentCommand": "[ -f packages.txt ] && sudo apt update && sudo apt upgrade -y && sudo xargs apt install -y <packages.txt; [ -f requirements.txt ] && pip3 install --user -r requirements.txt; pip3 install --user streamlit; echo '✅ Packages installed and Requirements met'",
+  "postCreateCommand": "pip install -e '.[dev,test]' && pre-commit install --hook-type pre-commit --hook-type pre-push && cp -n .env.example .env 2>/dev/null || true",
   "postAttachCommand": {
     "server": "streamlit run immermatch/app.py --server.enableCORS false --server.enableXsrfProtection false"
   },

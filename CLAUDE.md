@@ -13,6 +13,7 @@ source .venv/bin/activate   # ALWAYS required before any command
 
 ```bash
 source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
+# Or simply: make check
 ```
 
 ## Rules

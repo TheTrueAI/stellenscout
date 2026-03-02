@@ -14,7 +14,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 **Input:** Raw text extracted from a CV (PDF, DOCX, Markdown, or plain text).
 **Output:** A structured JSON summary of the candidate.
 
-**System Prompt:**
+**System Prompt:** *(source of truth: `immermatch/search_agent.py:PROFILER_SYSTEM_PROMPT`)*
 > You are an expert technical recruiter with deep knowledge of European job markets.
 > You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
 >
@@ -73,7 +73,7 @@ The system prompt is selected based on the active **SearchProvider**:
 
 Used when `provider.name == "Bundesagentur für Arbeit"`. Generates keyword-only queries (no location tokens) because the BA API has a dedicated `wo` parameter for location filtering.
 
-**System Prompt:**
+**System Prompt:** *(source of truth: `immermatch/search_agent.py:BA_HEADHUNTER_SYSTEM_PROMPT`)*
 > You are a Search Specialist generating keyword queries for the German Federal Employment Agency job search API (Bundesagentur für Arbeit).
 >
 > Based on the candidate's profile, generate distinct keyword queries to find relevant job openings. The API searches across German job listings and handles location filtering separately.
@@ -94,7 +94,7 @@ Used when `provider.name == "Bundesagentur für Arbeit"`. Generates keyword-only
 
 Used when `provider.name != "Bundesagentur für Arbeit"` (e.g., SerpApiProvider for non-German markets). Generates location-enriched queries optimised for Google Jobs.
 
-**System Prompt:**
+**System Prompt:** *(source of truth: `immermatch/search_agent.py:HEADHUNTER_SYSTEM_PROMPT`)*
 > You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings.
 >
 > IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
@@ -139,7 +139,7 @@ class SearchProvider(Protocol):
 
 **Output:** A JSON object with score, reasoning, and missing skills.
 
-**System Prompt:**
+**System Prompt:** *(source of truth: `immermatch/evaluator_agent.py:SCREENER_SYSTEM_PROMPT`)*
 > You are a strict Hiring Manager. Evaluate if the candidate is a fit for this specific job.
 >
 > **Scoring Rubric (0-100):**
@@ -162,7 +162,7 @@ class SearchProvider(Protocol):
 - Temperature: 0.2 (low for consistent scoring)
 - Max tokens: 8192
 
-**Execution:** Jobs are evaluated in parallel using `ThreadPoolExecutor(max_workers=10)` with thread-safe progress tracking. On API errors, a fallback score of 50 is assigned.
+**Execution:** Jobs are evaluated in parallel using `ThreadPoolExecutor(max_workers=30)` with thread-safe progress tracking. On API errors, a fallback score of 50 is assigned.
 
 ---
 
@@ -175,7 +175,7 @@ class SearchProvider(Protocol):
 
 **Output:** A markdown-formatted career summary string (not JSON).
 
-**System Prompt:**
+**System Prompt:** *(source of truth: `immermatch/evaluator_agent.py:ADVISOR_SYSTEM_PROMPT`)*
 > You are a career advisor. Given a candidate profile and their evaluated job matches, write a very brief summary. Use a friendly and encouraging tone, but be honest about the fit. Focus on actionable insights. Use emojis to make it more engaging.
 >
 > Structure your response in plain text with these sections:
@@ -231,7 +231,7 @@ SERPAPI_PARAMS = {
 
 ### Blocked Job Portals (SerpApi only)
 
-Jobs from the following portals are discarded during search result parsing (see `search_agent.py:_BLOCKED_PORTALS`):
+Jobs from the following portals are discarded during search result parsing (see `immermatch/serpapi_provider.py:BLOCKED_PORTALS`):
 
 > bebee, trabajo, jooble, adzuna, jobrapido, neuvoo, mitula, trovit, jobomas, jobijoba, talent, jobatus, jobsora, studysmarter, jobilize, learn4good, grabjobs, jobtensor, zycto, terra.do, jobzmall, simplyhired
 
@@ -240,6 +240,8 @@ Listings with no remaining apply links after filtering are skipped entirely.
 ---
 
 ## 6. Pydantic Schemas
+
+*(Source of truth: `immermatch/models.py` — keep this section in sync when fields change.)*
 
 All models use `Field()` with descriptions and defaults where appropriate.
 
@@ -559,42 +561,30 @@ Immermatch is **free to self-host** (bring your own API keys). The official host
 
 ## 14. Development Workflow & Agent Instructions
 
-This section documents the development process and conventions for both human and AI agents working on this codebase. `CLAUDE.md` is a lightweight quick-reference version of these instructions that Claude Code loads automatically. It points agents here for full architecture context.
+This section documents the development process and conventions for both human and AI agents working on this codebase.
 
-### Quick Reference (for AI agents)
+### Agent instruction files
+
+| File | Consumed by | Purpose |
+|---|---|---|
+| `CLAUDE.md` | Claude Code | Lightweight quick-reference: env setup, check suite, rules, architecture table |
+| `.github/copilot-instructions.md` | GitHub Copilot Chat | Same rules as CLAUDE.md, tuned for Copilot context |
+| `.github/copilot/*.prompt.md` | Copilot Chat (reusable prompts) | `write-tests`, `new-db-function`, `new-pydantic-model`, `pr-review` |
+| `AGENTS.md` (this file) | All agents + humans | Full architecture docs — the single source of truth |
+
+### Makefile
+
+Common tasks are wrapped in a `Makefile` at the repo root:
 
 ```bash
-# Activate the virtual environment first — ALWAYS required:
-source .venv/bin/activate
-
-# Test:    pytest tests/ -x -q
-# Lint:    ruff check --fix . && ruff format --check .
-# Types:   mypy .
-# Run app: streamlit run immermatch/app.py
-# All:     ruff check --fix . && mypy . && pytest tests/ -x -q
+make check      # pytest + ruff lint + ruff format + mypy (the full gate)
+make test        # pytest only
+make lint        # ruff check --fix + ruff format --check
+make typecheck   # mypy
+make run         # streamlit run
+make coverage    # pytest --cov with term-missing report
+make clean       # remove caches and build artifacts
 ```
-
-**IMPORTANT:** After every code change, run the check suite **without asking for permission** — just do it:
-```bash
-source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
-```
-Do not ask the user "Shall I run the tests?" — always run them automatically.
-
-### Conventions for AI agents
-
-- **Always activate the virtual environment** (`source .venv/bin/activate`) before running any command (`pytest`, `ruff`, `mypy`, `streamlit`, etc.). The project's dependencies are installed only in `.venv`.
-- Use `google-genai` package, NOT the deprecated `google.generativeai`
-- Gemini model: `gemini-3-flash-preview`
-- Pydantic models live in `immermatch/models.py` — follow existing patterns
-- All external services (Gemini, SerpAPI, Supabase, Resend) must be mocked in tests — no API keys needed to run `pytest`
-- Shared test fixtures in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
-- Test fixture files (sample CVs, etc.) live in `tests/fixtures/`
-- All DB writes use the admin client (`get_admin_client()`), never the anon client
-- Log subscriber UUIDs, never email addresses
-- All `st.error()` calls must show generic messages; real exceptions go to `logger.exception()`
-- Follow the test file naming convention: `tests/test_<module>.py` for `immermatch/<module>.py`
-- After implementing changes, always run `pytest tests/ -x -q` to verify nothing is broken
-- Use as much as possible external libraries and built-in functions instead of writing custom code (e.g., for date parsing, string manipulation, etc.) — this increases reliability and reduces bugs
 
 ### Development workflow
 
@@ -634,16 +624,3 @@ The recommended workflow for implementing tasks/issues:
 Already configured in `.pre-commit-config.yaml`:
 - **On commit:** trailing whitespace, YAML/TOML/JSON checks, large file check, merge conflict detection, private key detection, secrets scanning, ruff lint+format, mypy
 - **On push:** full test suite (`pytest tests/ -x -q --tb=short`)
-
----
-
-# Open Issues
-- How to deal with many API requests for SerpAPI? It's quite expensive at scale.
-- Make UI more engaging and personalized (use first name?).
-- Some jobs don't exist anymore, but are still found by SerpAPI through job aggregators. Can we detect and filter these better?
-- Let the user also personalize the search/evaluation by editing the generated queries, their profile, or having an extra "preferences" input (e.g., "I want to work in fintech", "I want a remote job", "I don't want to work for big corporations")?
-- Let the user upload multiple CVs (e.g., one for software engineering, one for data science) and route them to different job searches?
-- Let the user update their daily digest preferences (e.g., "only send me jobs with score > 80", "send me a weekly digest instead of daily")?
-- Integrate Stripe for paid newsletter subscriptions (Phase 2).
-- Write issue templates for the public repo.
-- The SerpAPI query and the job evaluation are currently separate steps. Can we combine them to save API calls? For example, can we ask Gemini to generate the search queries AND evaluate the jobs in one go? Or can we at least evaluate each job as we parse it, instead of collecting them all and then evaluating? This might increase speed.

@@ -12,6 +12,10 @@ __pycache__/
 *.so
 .Python
 .coverage
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
 build/
 develop-eggs/
 dist/
@@ -31,7 +35,9 @@ immermatch.egg-info/
 
 # IDE
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
 *.swp
 *.swo
 
