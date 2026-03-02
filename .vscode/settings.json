@@ -1,0 +1,43 @@
+{
+    "github.copilot.chat.agent.autoApprove": "withChat",
+    "chat.tools.terminal.autoApprove": {
+        "pytest": true,
+        "python -m pytest": true,
+        ".venv/bin/pytest": true,
+        "ruff": true,
+        "mypy": true,
+        "source .venv/bin/activate": true,
+        "pip install": true,
+        "cat": true,
+        "head": true,
+        "tail": true,
+        "grep": true,
+        "find": true,
+        "ls": true,
+        "wc": true,
+        "make": true
+    },
+    "github.copilot.chat.codeGeneration.instructions": [
+        { "file": ".github/copilot-instructions.md" }
+    ],
+    "github.copilot.chat.testGeneration.instructions": [
+        { "text": "Use pytest. Mock all external services (Gemini, SerpAPI, Supabase, Resend). Follow existing fixtures in tests/conftest.py. Test file naming: tests/test_<module>.py." }
+    ],
+    "python.terminal.useEnvFile": true,
+    "python.analysis.typeCheckingMode": "standard",
+    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": false,
+    "python.testing.pytestArgs": [
+        "tests/",
+        "-x",
+        "-q"
+    ],
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true,
+        "editor.codeActionsOnSave": {
+            "source.organizeImports.ruff": "explicit",
+            "source.fixAll.ruff": "explicit"
+        }
+    }
+}
