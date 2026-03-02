@@ -18,6 +18,13 @@ Translate product goals into an executable roadmap balancing launch speed, user 
 3. Digest reliability and anti-abuse hardening
 4. Monetization readiness
 
+## Validation Workflow
+- Prefer Makefile targets for any implementation follow-through:
+	- `make check` (full gate)
+	- `make test` (tests)
+	- `make lint` (ruff)
+	- `make typecheck` (mypy)
+
 ## Decision Log Template
 Use this format for each strategic update:
 - Date:

@@ -12,9 +12,16 @@ source .venv/bin/activate   # ALWAYS required before any command
 ## After every code change — run automatically, don't ask
 
 ```bash
-source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
-# Or simply: make check
+make check
 ```
+
+Prefer Makefile targets for daily workflow:
+- `make check` (full gate)
+- `make test` (tests only)
+- `make lint` (ruff lint/format check)
+- `make typecheck` (mypy)
+- `make run` (Streamlit)
+- `make coverage` (coverage report)
 
 ## Rules
 
@@ -27,6 +34,14 @@ source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff f
 - Shared fixtures in `tests/conftest.py`: `sample_profile`, `sample_job`, `sample_evaluation`, `sample_evaluated_job`
 - Test fixture files (sample CVs) in `tests/fixtures/`
 - Prefer external libraries and builtins over custom code
+
+## Topic routing (specialist docs)
+
+- Search/API/provider questions → consult `docs/search-api/AGENT.md` first.
+- Strategy/roadmap/market questions → consult `docs/strategy/AGENT.md` first.
+- Cross-domain questions → consult both and split output into execution vs prioritization.
+- Apply routing automatically by keyword even if the prompt does not reference doc paths.
+- If intent is ambiguous, consult both docs and explicitly label sections.
 
 ## Architecture (at a glance)
 

@@ -17,5 +17,8 @@ When writing tests for a module in `immermatch/`:
 6. **Cover edge cases:** empty inputs, API errors, invalid JSON, missing fields
 7. **Run after writing:**
    ```bash
-   source .venv/bin/activate && pytest tests/test_<module>.py -x -q
+   make test
+   # Optional focused run when iterating quickly:
+   # source .venv/bin/activate && pytest tests/test_<module>.py -x -q
+   # Before finishing a change, run: make check
    ```

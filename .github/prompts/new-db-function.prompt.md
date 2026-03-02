@@ -24,3 +24,7 @@ When adding a new function to `immermatch/db.py`:
        mock_table.select.return_value.eq.return_value.execute.return_value = MagicMock(data=[...])
    ```
 6. **Update `AGENTS.md` §11** if the function is part of the public API (subscriber lifecycle, job operations)
+7. **Validate before finishing:**
+    ```bash
+    make check
+    ```

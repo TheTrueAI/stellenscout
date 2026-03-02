@@ -26,7 +26,7 @@ Fetch and address review comments from the most recent PR on the current branch.
    - Ask for explicit confirmation before implementing any code/document changes.
 5. **After confirmation, implement valid changes**, then run the check suite:
    ```bash
-   source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
+   make check
    ```
 6. **Commit strategy:**
    - **Trivial fixes** (typos, naming, small refactors): `git add -A && git commit --amend --no-edit && git push --force-with-lease`
