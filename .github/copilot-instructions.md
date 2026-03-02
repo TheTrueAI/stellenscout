@@ -11,8 +11,16 @@
 Run the full check suite without asking — just do it:
 
 ```bash
-source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
+make check
 ```
+
+Prefer Makefile targets for routine workflows:
+- `make check` (full gate)
+- `make test` (tests)
+- `make lint` (ruff)
+- `make typecheck` (mypy)
+- `make run` (Streamlit app)
+- `make coverage` (coverage report)
 
 ## Testing conventions
 
@@ -29,6 +37,32 @@ source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff f
 - All DB writes use `get_admin_client()`, never the anon client
 - Log subscriber UUIDs, never email addresses
 - All `st.error()` calls show generic messages; real exceptions go to `logger.exception()`
+
+## Topic routing (specialist agent docs)
+
+When handling prompts, route to the matching specialist doc before answering:
+
+- **Search/API/provider topics** (keywords like: API, search, provider, Bundesagentur, SerpApi, query quality, stale jobs)
+	- First consult: `docs/search-api/AGENT.md`
+	- Then use supporting context from: `docs/search-api/Improving Job Search API Results.md` and `AGENTS.md`
+- **Strategy/roadmap/market topics** (keywords like: strategy, roadmap, prioritization, launch, monetization, pricing, market)
+	- First consult: `docs/strategy/AGENT.md`
+	- Then use supporting context from: `docs/strategy/ROADMAP.md` and `AGENTS.md`
+
+If a prompt spans both domains, consult both docs and explicitly separate recommendations into:
+1) Search/API execution
+2) Strategy/prioritization
+
+### Auto-routing behavior
+
+- Apply this routing automatically when the prompt contains matching domain keywords, even if the user does not explicitly reference the doc path.
+- If the intent is ambiguous between domains, consult both docs and provide a split response.
+- If no domain keywords are present, continue with normal project-wide guidance.
+
+### Trigger keywords (non-exhaustive)
+
+- **Search/API domain:** api, search, provider, bundesagentur, serpapi, stale jobs, query quality, deduplication, routing, pagination
+- **Strategy domain:** strategy, roadmap, prioritization, launch, pricing, monetization, market, growth, KPI, positioning
 
 ## Architecture at a glance
 

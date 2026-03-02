@@ -24,6 +24,13 @@ Maintain and improve search quality, freshness, and provider reliability for Imm
 ## Research Inputs
 - `docs/search-api/Improving Job Search API Results.md`
 
+## Validation Workflow
+- Prefer Makefile targets for checks:
+	- `make check` (full gate)
+	- `make test` (tests)
+	- `make lint` (ruff)
+	- `make typecheck` (mypy)
+
 ## Decision Log Template
 Use this format for each change:
 - Date:

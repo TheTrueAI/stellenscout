@@ -49,7 +49,17 @@ cp .env.example .env
 ### Run the App
 
 ```bash
-streamlit run immermatch/app.py
+make run
+```
+
+### Common Make Targets
+
+```bash
+make check      # full gate (tests + lint + format + mypy)
+make test       # tests only
+make lint       # ruff lint/format check
+make typecheck  # mypy
+make coverage   # pytest coverage report
 ```
 
 ## How It Works
@@ -126,7 +136,7 @@ See `AGENTS.md` §10 for the full email lifecycle (double opt-in, auto-expiry, u
 
 ```bash
 pip install -e ".[test]"
-pytest tests/ -v --cov=immermatch --cov-report=term-missing
+make coverage
 ```
 
 All external services (Gemini, SerpApi, Supabase, Resend) are mocked — no API keys needed to run the test suite.
@@ -134,8 +144,8 @@ All external services (Gemini, SerpApi, Supabase, Resend) are mocked — no API 
 Linting and type checking:
 
 ```bash
-ruff check --fix . && ruff format --check .
-mypy immermatch/ daily_task.py
+make lint
+make typecheck
 ```
 
 Pre-commit hooks are available for automatic quality gates:

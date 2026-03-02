@@ -569,6 +569,10 @@ This section documents the development process and conventions for both human an
 |---|---|---|
 | `CLAUDE.md` | Claude Code | Lightweight quick-reference: env setup, check suite, rules, architecture table |
 | `.github/copilot-instructions.md` | GitHub Copilot Chat | Same rules as CLAUDE.md, tuned for Copilot context |
+| `docs/search-api/AGENT.md` | Domain specialists | Search/API decisions, tradeoffs, and quality-improvement context |
+| `docs/strategy/AGENT.md` | Domain specialists | Strategy assumptions, prioritization lens, and roadmap context |
+| `.github/copilot/search-api-specialist.prompt.md` | Copilot Chat | Explicit search/API specialist mode prompt |
+| `.github/copilot/strategy-specialist.prompt.md` | Copilot Chat | Explicit strategy specialist mode prompt |
 | `.github/copilot/*.prompt.md` | Copilot Chat (reusable prompts) | `write-tests`, `new-db-function`, `new-pydantic-model`, `pr-review` |
 | `AGENTS.md` (this file) | All agents + humans | Full architecture docs — the single source of truth |
 
@@ -623,4 +627,4 @@ The recommended workflow for implementing tasks/issues:
 
 Already configured in `.pre-commit-config.yaml`:
 - **On commit:** trailing whitespace, YAML/TOML/JSON checks, large file check, merge conflict detection, private key detection, secrets scanning, ruff lint+format, mypy
-- **On push:** full test suite (`pytest tests/ -x -q --tb=short`)
+- **On push:** full test suite (`make test` / `pytest tests/ -x -q --tb=short`)

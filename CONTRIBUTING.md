@@ -31,9 +31,11 @@ No API keys are needed for running tests — all external services are mocked.
 
 2. Make your changes and run quality checks:
    ```bash
-   ruff check --fix . && ruff format --check .
-   mypy immermatch/ daily_task.py
-   pytest tests/ -x -q
+   make check
+   # Optional during iteration:
+   # make test
+   # make lint
+   # make typecheck
    ```
 
 3. Commit your changes. Pre-commit hooks will automatically run:

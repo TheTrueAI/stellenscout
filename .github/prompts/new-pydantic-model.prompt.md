@@ -16,3 +16,7 @@ When adding a new Pydantic model to `immermatch/models.py`:
    - Validation errors for invalid values
    - Round-trip serialization: `MyModel(**model.model_dump())`
 5. **Update `AGENTS.md` §6** if the model is part of the pipeline schema
+6. **Validate before finishing:**
+   ```bash
+   make check
+   ```
