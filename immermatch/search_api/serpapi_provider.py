@@ -1,7 +1,7 @@
 """SerpApi-backed job search provider (Google Jobs).
 
 This module wraps the existing SerpApi integration behind the
-:class:`~immermatch.search_provider.SearchProvider` protocol so it can
+:class:`~immermatch.search_api.search_provider.SearchProvider` protocol so it can
 be swapped in alongside other providers (e.g. Bundesagentur für Arbeit).
 """
 
@@ -12,7 +12,7 @@ import re
 
 from serpapi import GoogleSearch
 
-from .models import ApplyOption, JobListing
+from ..models import ApplyOption, JobListing
 
 # ---------------------------------------------------------------------------
 # Blocked portal list (questionable job aggregators / paywalls)
@@ -343,7 +343,7 @@ def search_jobs(
 class SerpApiProvider:
     """Google Jobs search via SerpApi.
 
-    Satisfies the :class:`~immermatch.search_provider.SearchProvider` protocol.
+    Satisfies the :class:`~immermatch.search_api.search_provider.SearchProvider` protocol.
     """
 
     name: str = "SerpApi (Google Jobs)"

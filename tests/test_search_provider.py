@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from immermatch.models import ApplyOption, JobListing
-from immermatch.search_provider import CombinedSearchProvider, parse_provider_query
+from immermatch.search_api.search_provider import CombinedSearchProvider, parse_provider_query
 
 
 def _make_job(title: str, company: str, location: str = "Berlin") -> JobListing:

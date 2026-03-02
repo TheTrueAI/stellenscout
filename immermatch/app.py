@@ -46,12 +46,12 @@ from immermatch.db import SUBSCRIPTION_DAYS  # noqa: E402
 from immermatch.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from immermatch.llm import create_client  # noqa: E402
 from immermatch.models import CandidateProfile, EvaluatedJob, JobListing  # noqa: E402
-from immermatch.search_agent import (  # noqa: E402
+from immermatch.search_api.search_agent import (  # noqa: E402
     generate_search_queries,
     profile_candidate,
     search_all_queries,
 )
-from immermatch.search_provider import (  # noqa: E402
+from immermatch.search_api.search_provider import (  # noqa: E402
     get_provider,
     get_provider_fingerprint,
     parse_provider_query,  # noqa: E402

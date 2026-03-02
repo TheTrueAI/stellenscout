@@ -14,7 +14,7 @@ This document defines the persona, context, and instruction sets for the AI agen
 **Input:** Raw text extracted from a CV (PDF, DOCX, Markdown, or plain text).
 **Output:** A structured JSON summary of the candidate.
 
-**System Prompt:** *(source of truth: `immermatch/search_agent.py:PROFILER_SYSTEM_PROMPT`)*
+**System Prompt:** *(source of truth: `immermatch/search_api/search_agent.py:PROFILER_SYSTEM_PROMPT`)*
 > You are an expert technical recruiter with deep knowledge of European job markets.
 > You will be given the raw text of a candidate's CV. Extract a comprehensive profile.
 >
@@ -73,7 +73,7 @@ The system prompt is selected based on the active **SearchProvider**:
 
 Used when `provider.name == "Bundesagentur für Arbeit"`. Generates keyword-only queries (no location tokens) because the BA API has a dedicated `wo` parameter for location filtering.
 
-**System Prompt:** *(source of truth: `immermatch/search_agent.py:BA_HEADHUNTER_SYSTEM_PROMPT`)*
+**System Prompt:** *(source of truth: `immermatch/search_api/search_agent.py:BA_HEADHUNTER_SYSTEM_PROMPT`)*
 > You are a Search Specialist generating keyword queries for the German Federal Employment Agency job search API (Bundesagentur für Arbeit).
 >
 > Based on the candidate's profile, generate distinct keyword queries to find relevant job openings. The API searches across German job listings and handles location filtering separately.
@@ -94,7 +94,7 @@ Used when `provider.name == "Bundesagentur für Arbeit"`. Generates keyword-only
 
 Used when `provider.name != "Bundesagentur für Arbeit"` (e.g., SerpApiProvider for non-German markets). Generates location-enriched queries optimised for Google Jobs.
 
-**System Prompt:** *(source of truth: `immermatch/search_agent.py:HEADHUNTER_SYSTEM_PROMPT`)*
+**System Prompt:** *(source of truth: `immermatch/search_api/search_agent.py:HEADHUNTER_SYSTEM_PROMPT`)*
 > You are a Search Specialist. Based on the candidate's profile and location, generate 20 distinct search queries to find relevant job openings.
 >
 > IMPORTANT: Keep queries SHORT and SIMPLE (1-3 words). Google Jobs works best with simple, broad queries.
@@ -109,7 +109,7 @@ Used when `provider.name != "Bundesagentur für Arbeit"` (e.g., SerpApiProvider 
 
 **Search Provider Architecture:**
 
-The search pipeline uses a pluggable `SearchProvider` protocol (defined in `search_provider.py`):
+The search pipeline uses a pluggable `SearchProvider` protocol (defined in `immermatch/search_api/search_provider.py`):
 
 ```python
 class SearchProvider(Protocol):
@@ -231,7 +231,7 @@ SERPAPI_PARAMS = {
 
 ### Blocked Job Portals (SerpApi only)
 
-Jobs from the following portals are discarded during search result parsing (see `immermatch/serpapi_provider.py:BLOCKED_PORTALS`):
+Jobs from the following portals are discarded during search result parsing (see `immermatch/search_api/serpapi_provider.py:BLOCKED_PORTALS`):
 
 > bebee, trabajo, jooble, adzuna, jobrapido, neuvoo, mitula, trovit, jobomas, jobijoba, talent, jobatus, jobsora, studysmarter, jobilize, learn4good, grabjobs, jobtensor, zycto, terra.do, jobzmall, simplyhired
 
@@ -504,8 +504,8 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 |---|---|---|
 | `test_llm.py` (12 tests) | `llm.py` | `parse_json()` (8 cases: raw, fenced, embedded, nested, errors) + `call_gemini()` retry logic (4 cases: success, ServerError retry, 429 retry, non-429 immediate raise) |
 | `test_evaluator_agent.py` (8 tests) | `evaluator_agent.py` | `evaluate_job()` (4 cases: happy path, API error fallback, parse error fallback, non-dict fallback) + `evaluate_all_jobs()` (3 cases: sorted output, progress callback, empty list) + `generate_summary()` (2 cases: score distribution in prompt, missing skills in prompt) |
-| `test_search_agent.py` (35 tests) | `search_agent.py` | `_is_remote_only()` (remote tokens, non-remote) + `_infer_gl()` (known locations, unknown default, remote returns None, case insensitive) + `_localise_query()` (city names, country names, case insensitive, multiple cities) + `_parse_job_results()` (valid, blocked portals, mixed, empty, no-apply-links) + `search_all_queries()` (provider delegation, dedup, early stopping, callbacks, default provider) + `generate_search_queries()` prompt selection (BA vs SerpApi) + `TestLlmJsonRecovery` (profile_candidate and generate_search_queries retry/recovery) |
-| `test_bundesagentur.py` (22 tests) | `bundesagentur.py` | `_build_ba_link()`, `_parse_location()`, `_parse_search_results()`, `_parse_listing()`, `BundesagenturProvider.search()` (basic merge, pagination, HTTP errors, empty results, detail fetch failures), `SearchProvider` protocol conformance |
+| `test_search_agent.py` (35 tests) | `search_api/search_agent.py` | `_is_remote_only()` (remote tokens, non-remote) + `_infer_gl()` (known locations, unknown default, remote returns None, case insensitive) + `_localise_query()` (city names, country names, case insensitive, multiple cities) + `_parse_job_results()` (valid, blocked portals, mixed, empty, no-apply-links) + `search_all_queries()` (provider delegation, dedup, early stopping, callbacks, default provider) + `generate_search_queries()` prompt selection (BA vs SerpApi) + `TestLlmJsonRecovery` (profile_candidate and generate_search_queries retry/recovery) |
+| `test_bundesagentur.py` (22 tests) | `search_api/bundesagentur.py` | `_build_ba_link()`, `_parse_location()`, `_parse_search_results()`, `_parse_listing()`, `BundesagenturProvider.search()` (basic merge, pagination, HTTP errors, empty results, detail fetch failures), `SearchProvider` protocol conformance |
 | `test_cache.py` (17 tests) | `cache.py` | All cache operations: profile, queries, jobs (merge/dedup), evaluations, unevaluated job filtering |
 | `test_cv_parser.py` (6 tests) | `cv_parser.py` | `_clean_text()` + `extract_text()` for .txt/.md, error cases |
 | `test_models.py` (23 tests) | `models.py` | All Pydantic models: validation, defaults, round-trip serialization |
@@ -517,7 +517,7 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 | `test_integration.py` (11 tests) | Full pipeline | End-to-end: CV text → profile → queries → search → evaluate → summary, all services mocked |
 | `test_pages_unsubscribe.py` (6 tests) | `pages/unsubscribe.py` | Unsubscribe page logic: token validation, DB deactivation, error states (AppTest) |
 | `test_pages_verify.py` (7 tests) | `pages/verify.py` | DOI verification page: token confirmation, welcome email, expiry setting, error states (AppTest) |
-| `test_search_provider.py` (2 tests) | `search_provider.py` | Provider helpers: `parse_provider_query()`, combined provider behavior |
+| `test_search_provider.py` (2 tests) | `search_api/search_provider.py` | Provider helpers: `parse_provider_query()`, combined provider behavior |
 
 ### Testing conventions
 - All external services (Gemini API, SerpAPI, Supabase) are mocked — no API keys needed to run tests
@@ -590,7 +590,7 @@ make clean       # remove caches and build artifacts
 
 The recommended workflow for implementing tasks/issues:
 
-1. **Pick the next unchecked task** from `ROADMAP.md`
+1. **Pick the next unchecked task** from `docs/strategy/ROADMAP.md`
 2. **Plan the implementation** in Copilot Chat — describe the task, ask for a plan, review it
 3. **Implement via Copilot Chat** (agent mode) — let the agent write code, create files, and run tests. It will implement → test → fix in a loop.
 4. **Review the diff locally** — check changed files, run the Streamlit app once if needed
@@ -607,7 +607,7 @@ The recommended workflow for implementing tasks/issues:
    ```bash
    gh pr merge --squash --delete-branch
    ```
-9. **Mark the task as done** in `ROADMAP.md` (change `- [ ]` to `- [x]`)
+9. **Mark the task as done** in `docs/strategy/ROADMAP.md` (change `- [ ]` to `- [x]`)
 
 ### Tool allocation (token efficiency)
 

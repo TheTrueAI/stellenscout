@@ -2,7 +2,7 @@ Fetch and address review comments from the most recent PR on the current branch.
 
 ## Execution policy
 
-- Run all `gh` commands (or equivalent GitHub MCP calls) immediately without asking for confirmation.
+- Run all `gh` commands (or equivalent GitHub MCP calls) immediately without asking for confirmation. Prefer MCP calls for efficiency when possible.
 - Do **not** start code edits until after presenting a full comment assessment and getting explicit user confirmation.
 
 ## Workflow
@@ -17,6 +17,7 @@ Fetch and address review comments from the most recent PR on the current branch.
    ```
 3. **List all comments first (no edits yet):**
    - Produce a complete checklist of every review comment.
+   - Make it look like a pretty table or bulleted list for easy reading.
    - For each item include:
      - **Assessment:** valid / duplicate / not applicable
      - **Suggestion:** exact fix you plan to apply (or why you will skip)

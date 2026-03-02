@@ -45,7 +45,7 @@ from immermatch.emailer import send_daily_digest
 from immermatch.evaluator_agent import evaluate_all_jobs
 from immermatch.llm import create_client
 from immermatch.models import CandidateProfile, EvaluatedJob, JobListing
-from immermatch.search_agent import search_all_queries
+from immermatch.search_api.search_agent import search_all_queries
 
 logging.basicConfig(
     level=logging.INFO,

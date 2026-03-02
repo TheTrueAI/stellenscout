@@ -1,8 +1,8 @@
 """Search Agent module - Generates optimized job search queries using LLM.
 
 The SerpApi-specific helpers (``_infer_gl``, ``_localise_query``, etc.) live
-in :mod:`immermatch.serpapi_provider` and are re-exported here for backward
-compatibility.
+in :mod:`immermatch.search_api.serpapi_provider` and are re-exported here for
+backward compatibility.
 """
 
 from __future__ import annotations
@@ -15,8 +15,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from google import genai
 from pydantic import ValidationError
 
-from .llm import call_gemini, parse_json
-from .models import CandidateProfile, JobListing
+from ..llm import call_gemini, parse_json
+from ..models import CandidateProfile, JobListing
 from .search_provider import (
     CombinedSearchProvider,
     SearchProvider,
@@ -205,7 +205,7 @@ def generate_search_queries(
 ) -> list[str]:
     """Generate optimized job search queries based on candidate profile.
 
-    When a :class:`~immermatch.bundesagentur.BundesagenturProvider` is active
+    When a :class:`~immermatch.search_api.bundesagentur.BundesagenturProvider` is active
     the prompt asks the LLM for short keyword-only queries (no location
     tokens).  For SerpApi / Google Jobs the prompt includes location-enrichment
     strategies.
