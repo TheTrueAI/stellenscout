@@ -77,7 +77,12 @@ class ResultCache:
     # 2. Queries  (keyed by profile hash + location)
     # ------------------------------------------------------------------
 
-    def load_queries(self, profile: CandidateProfile, location: str) -> list[str] | None:
+    def load_queries(
+        self,
+        profile: CandidateProfile,
+        location: str,
+        provider_fingerprint: str = "",
+    ) -> list[str] | None:
         data = self._load("queries.json")
         if data is None:
             return None
@@ -85,17 +90,26 @@ class ResultCache:
             return None
         if data.get("location") != location:
             return None
+        if data.get("provider_fingerprint", "") != provider_fingerprint:
+            return None
         queries = data.get("queries")
         if not isinstance(queries, list):
             return None
         return queries
 
-    def save_queries(self, profile: CandidateProfile, location: str, queries: list[str]) -> None:
+    def save_queries(
+        self,
+        profile: CandidateProfile,
+        location: str,
+        queries: list[str],
+        provider_fingerprint: str = "",
+    ) -> None:
         self._save(
             "queries.json",
             {
                 "profile_hash": _profile_hash(profile),
                 "location": location,
+                "provider_fingerprint": provider_fingerprint,
                 "queries": queries,
             },
         )
@@ -130,7 +144,7 @@ class ResultCache:
             existing = data.get("jobs", {})
 
         for job in jobs:
-            key = f"{job.title}|{job.company_name}"
+            key = f"{job.title}|{job.company_name}|{job.location}"
             existing[key] = job.model_dump()
 
         self._save(
@@ -143,7 +157,7 @@ class ResultCache:
         )
 
     # ------------------------------------------------------------------
-    # 4. Evaluations  (append-only, keyed by title|company)
+    # 4. Evaluations  (append-only, keyed by title|company|location)
     # ------------------------------------------------------------------
 
     def load_evaluations(self, profile: CandidateProfile) -> dict[str, EvaluatedJob]:
@@ -188,5 +202,5 @@ class ResultCache:
         Jobs already in the evaluation cache are skipped.
         """
         cached = self.load_evaluations(profile)
-        new_jobs = [job for job in jobs if f"{job.title}|{job.company_name}" not in cached]
+        new_jobs = [job for job in jobs if f"{job.title}|{job.company_name}|{job.location}" not in cached]
         return new_jobs, cached

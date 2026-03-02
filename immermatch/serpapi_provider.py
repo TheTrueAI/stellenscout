@@ -348,6 +348,7 @@ class SerpApiProvider:
     """
 
     name: str = "SerpApi (Google Jobs)"
+    source_id: str = "serpapi"
 
     def search(
         self,

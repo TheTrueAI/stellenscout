@@ -7,6 +7,7 @@ compatibility.
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,7 +17,13 @@ from pydantic import ValidationError
 
 from .llm import call_gemini, parse_json
 from .models import CandidateProfile, JobListing
-from .search_provider import SearchProvider, get_provider
+from .search_provider import (
+    CombinedSearchProvider,
+    SearchProvider,
+    format_provider_query,
+    get_provider,
+    parse_provider_query,
+)
 
 # Re-export SerpApi helpers so existing imports keep working.
 from .serpapi_provider import BLOCKED_PORTALS as _BLOCKED_PORTALS  # noqa: F401
@@ -28,6 +35,25 @@ from .serpapi_provider import is_remote_only as _is_remote_only  # noqa: F401
 from .serpapi_provider import localise_query as _localise_query  # noqa: F401
 from .serpapi_provider import parse_job_results as _parse_job_results  # noqa: F401
 from .serpapi_provider import search_jobs  # noqa: F401
+
+logger = logging.getLogger(__name__)
+_MIN_JOBS_PER_PROVIDER = 30
+
+
+def _provider_quota_source_key(provider: SearchProvider) -> str:
+    """Return a stable source key for per-provider quota accounting."""
+    source_id = getattr(provider, "source_id", None)
+    if isinstance(source_id, str) and source_id.strip():
+        return source_id.strip().lower()
+    name = getattr(provider, "name", None)
+    if isinstance(name, str) and name == "Bundesagentur für Arbeit":
+        return "bundesagentur"
+    if isinstance(name, str) and "serpapi" in name.lower():
+        return "serpapi"
+    if type(provider).__name__ == "SerpApiProvider":
+        return "serpapi"
+    return type(provider).__name__.lower()
+
 
 # System prompt for the Profiler agent
 PROFILER_SYSTEM_PROMPT = """You are an expert technical recruiter with deep knowledge of European job markets.
@@ -197,6 +223,49 @@ def generate_search_queries(
     if provider is None:
         provider = get_provider(location)
 
+    if isinstance(provider, CombinedSearchProvider):
+        provider_count = len(provider.providers)
+        if provider_count == 0:
+            return []
+
+        per_provider = num_queries // provider_count
+        remainder = num_queries % provider_count
+        merged_queries: list[str] = []
+
+        for index, child_provider in enumerate(provider.providers):
+            child_count = per_provider + (1 if index < remainder else 0)
+            if child_count <= 0:
+                continue
+            child_queries = _generate_search_queries_for_provider(
+                client,
+                profile,
+                location,
+                child_count,
+                child_provider,
+            )
+            merged_queries.extend([format_provider_query(child_provider.name, query) for query in child_queries])
+
+        seen: set[str] = set()
+        unique_queries: list[str] = []
+        for query in merged_queries:
+            if query in seen:
+                continue
+            seen.add(query)
+            unique_queries.append(query)
+            if len(unique_queries) >= num_queries:
+                break
+        return unique_queries
+
+    return _generate_search_queries_for_provider(client, profile, location, num_queries, provider)
+
+
+def _generate_search_queries_for_provider(
+    client: genai.Client,
+    profile: CandidateProfile,
+    location: str,
+    num_queries: int,
+    provider: SearchProvider,
+) -> list[str]:
     # Select system prompt based on active provider
     if provider.name == "Bundesagentur für Arbeit":
         system_prompt = BA_HEADHUNTER_SYSTEM_PROMPT
@@ -268,7 +337,14 @@ def search_all_queries(
     if provider is None:
         provider = get_provider(location)
 
-    all_jobs: dict[str, JobListing] = {}  # Use title+company as key for dedup
+    quota_sources: set[str] = set()
+    if isinstance(provider, CombinedSearchProvider):
+        quota_sources = {_provider_quota_source_key(p) for p in provider.providers}
+        if quota_sources and min_unique_jobs > 0:
+            min_unique_jobs = max(min_unique_jobs, _MIN_JOBS_PER_PROVIDER * len(quota_sources))
+
+    all_jobs: dict[str, JobListing] = {}  # Use title+company+location as key for dedup
+    source_counts: dict[str, int] = {}
     lock = threading.Lock()
     completed = 0
     early_stop = threading.Event()
@@ -276,22 +352,34 @@ def search_all_queries(
     def _search_one(query: str) -> list[JobListing]:
         if early_stop.is_set():
             return []
-        return provider.search(query, location, max_results=jobs_per_query)
+        clean_query = query
+        if not isinstance(provider, CombinedSearchProvider):
+            _, clean_query = parse_provider_query(query)
+        return provider.search(clean_query, location, max_results=jobs_per_query)
 
     with ThreadPoolExecutor(max_workers=min(5, max(1, len(queries)))) as executor:
         futures = [executor.submit(_search_one, q) for q in queries]
         for future in as_completed(futures):
-            jobs = future.result()
+            jobs: list[JobListing] = []
+            try:
+                jobs = future.result()
+            except Exception:
+                logger.exception("A search query failed")
             batch_new: list[JobListing] = []
             with lock:
                 for job in jobs:
-                    key = f"{job.title}|{job.company_name}"
+                    key = f"{job.title}|{job.company_name}|{job.location}"
                     if key not in all_jobs:
                         all_jobs[key] = job
                         batch_new.append(job)
+                        source = (job.source or "unknown").lower()
+                        source_counts[source] = source_counts.get(source, 0) + 1
                 completed += 1
                 progress_args = (completed, len(queries), len(all_jobs))
-                if min_unique_jobs and len(all_jobs) >= min_unique_jobs:
+                quota_met = True
+                if quota_sources:
+                    quota_met = all(source_counts.get(source, 0) >= _MIN_JOBS_PER_PROVIDER for source in quota_sources)
+                if min_unique_jobs and len(all_jobs) >= min_unique_jobs and quota_met:
                     early_stop.set()
             # Callbacks outside the lock to avoid blocking other threads
             if on_progress is not None:
@@ -304,5 +392,20 @@ def search_all_queries(
                     if f is not future and not f.done():
                         f.cancel()
                 break
+
+    if source_counts:
+        counts_text = ", ".join(f"{source}={count}" for source, count in sorted(source_counts.items()))
+        logger.info("Search source counts for location '%s': %s", location or "(none)", counts_text)
+        if quota_sources:
+            missing = [
+                source for source in sorted(quota_sources) if source_counts.get(source, 0) < _MIN_JOBS_PER_PROVIDER
+            ]
+            if missing:
+                logger.warning(
+                    "Provider quota not reached for location '%s': %s (required >= %d each)",
+                    location or "(none)",
+                    ", ".join(missing),
+                    _MIN_JOBS_PER_PROVIDER,
+                )
 
     return list(all_jobs.values())

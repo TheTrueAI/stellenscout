@@ -52,6 +52,11 @@ from immermatch.search_agent import (  # noqa: E402
     profile_candidate,
     search_all_queries,
 )
+from immermatch.search_provider import (  # noqa: E402
+    get_provider,
+    get_provider_fingerprint,
+    parse_provider_query,  # noqa: E402
+)
 
 # ---------------------------------------------------------------------------
 # Page configuration
@@ -726,21 +731,23 @@ def _run_pipeline() -> None:
         return
 
     cache = _get_cache()
+    provider = get_provider(location)
+    provider_fingerprint = get_provider_fingerprint(provider)
     # Eagerly create the Gemini client so it's ready before the pipeline starts —
     # avoids lazy-init delay between query generation and job evaluation.
     client = create_client() if _keys_ok() else None
 
     # ---- Step 1: Generate queries ----------------------------------------
     with st.status("✨ Crafting search queries...", expanded=False) as status:
-        cached_queries = cache.load_queries(profile, location)
+        cached_queries = cache.load_queries(profile, location, provider_fingerprint)
         if cached_queries is not None:
             queries = cached_queries
             status.update(label="✅ Queries generated (cached)", state="complete")
         else:
             if client is None:
                 client = create_client()
-            queries = generate_search_queries(client, profile, location)
-            cache.save_queries(profile, location, queries)
+            queries = generate_search_queries(client, profile, location, provider=provider)
+            cache.save_queries(profile, location, queries, provider_fingerprint)
             status.update(label="✅ Queries generated", state="complete")
     st.session_state.queries = queries
 
@@ -775,7 +782,7 @@ def _run_pipeline() -> None:
                     job = futures[future]
                     evaluation = future.result()
                     ej = EvaluatedJob(job=job, evaluation=evaluation)
-                    key = f"{ej.job.title}|{ej.job.company_name}"
+                    key = f"{ej.job.title}|{ej.job.company_name}|{ej.job.location}"
                     all_evals[key] = ej
                     progress_bar.progress(
                         i / len(new_jobs),
@@ -802,7 +809,7 @@ def _run_pipeline() -> None:
             def _on_jobs_found(new_unique_jobs: list[JobListing]) -> None:
                 """Submit newly found jobs for evaluation immediately."""
                 for job in new_unique_jobs:
-                    key = f"{job.title}|{job.company_name}"
+                    key = f"{job.title}|{job.company_name}|{job.location}"
                     if key in all_evals:
                         continue  # already evaluated (from cache)
                     fut = eval_executor.submit(evaluate_job, client, profile, job)
@@ -825,6 +832,7 @@ def _run_pipeline() -> None:
                     location=location,
                     on_progress=_search_progress,
                     on_jobs_found=_on_jobs_found,
+                    provider=provider,
                 )
                 cache.save_jobs(jobs, location)
                 search_status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
@@ -847,7 +855,7 @@ def _run_pipeline() -> None:
                     job = eval_futures[future]
                     evaluation = future.result()
                     ej = EvaluatedJob(job=job, evaluation=evaluation)
-                    key = f"{ej.job.title}|{ej.job.company_name}"
+                    key = f"{ej.job.title}|{ej.job.company_name}|{ej.job.location}"
                     all_evals[key] = ej
                     eval_progress.progress(
                         i / total_evals,
@@ -951,7 +959,8 @@ if st.session_state.evaluated_jobs is not None:
             expanded=False,
         ):
             for q in st.session_state.queries:
-                st.markdown(f"- {q}")
+                _, clean_query = parse_provider_query(q)
+                st.markdown(f"- {clean_query}")
 
     # -- Profile (collapsed) -----------------------------------------------
     if st.session_state.profile is not None:

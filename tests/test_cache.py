@@ -70,6 +70,10 @@ class TestQueriesCache:
         )
         assert cache.load_queries(other, "Munich") is None
 
+    def test_miss_on_different_provider_fingerprint(self, cache: ResultCache, profile: CandidateProfile):
+        cache.save_queries(profile, "Munich", ["q1"], provider_fingerprint="bundesagentur|serpapi")
+        assert cache.load_queries(profile, "Munich", provider_fingerprint="bundesagentur") is None
+
 
 class TestJobsCache:
     @freeze_time("2026-02-20")
@@ -132,17 +136,17 @@ class TestEvaluationsCache:
     def test_round_trip(self, cache: ResultCache, profile: CandidateProfile):
         job = JobListing(title="Dev", company_name="Corp", location="Berlin")
         ev = JobEvaluation(score=80, reasoning="Good match.")
-        evaluated = {"Dev|Corp": EvaluatedJob(job=job, evaluation=ev)}
+        evaluated = {"Dev|Corp|Berlin": EvaluatedJob(job=job, evaluation=ev)}
 
         cache.save_evaluations(profile, evaluated)
         loaded = cache.load_evaluations(profile)
-        assert "Dev|Corp" in loaded
-        assert loaded["Dev|Corp"].evaluation.score == 80
+        assert "Dev|Corp|Berlin" in loaded
+        assert loaded["Dev|Corp|Berlin"].evaluation.score == 80
 
     def test_miss_on_different_profile(self, cache: ResultCache, profile: CandidateProfile):
         job = JobListing(title="Dev", company_name="Corp", location="Berlin")
         ev = JobEvaluation(score=80, reasoning="Good match.")
-        cache.save_evaluations(profile, {"Dev|Corp": EvaluatedJob(job=job, evaluation=ev)})
+        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job, evaluation=ev)})
 
         other = CandidateProfile(
             skills=["Java"],
@@ -159,9 +163,9 @@ class TestGetUnevaluatedJobs:
         job1 = JobListing(title="Dev", company_name="Corp", location="Berlin")
         job2 = JobListing(title="PM", company_name="Corp", location="Berlin")
         ev = JobEvaluation(score=80, reasoning="Good.")
-        cache.save_evaluations(profile, {"Dev|Corp": EvaluatedJob(job=job1, evaluation=ev)})
+        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job1, evaluation=ev)})
 
         new_jobs, cached = cache.get_unevaluated_jobs([job1, job2], profile)
         assert len(new_jobs) == 1
         assert new_jobs[0].title == "PM"
-        assert "Dev|Corp" in cached
+        assert "Dev|Corp|Berlin" in cached
