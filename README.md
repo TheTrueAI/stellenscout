@@ -65,7 +65,7 @@ Jobs are fetched from Google Jobs via SerpApi, deduplicated, and scored in paral
 
 ## Bundesagentur Provider Tuning
 
-The Bundesagentur provider in `immermatch/bundesagentur.py` supports a configurable detail-fetch strategy:
+The Bundesagentur provider in `immermatch/search_api/bundesagentur.py` supports a configurable detail-fetch strategy:
 
 - `api_then_html` (default): first tries `/pc/v4/jobdetails/{refnr}`, then falls back to scraping the public job-detail page if needed
 - `api_only`: uses only the API detail endpoint
@@ -152,7 +152,11 @@ immermatch/
   app.py              # Streamlit web UI
   llm.py              # Gemini client and retry logic
   cv_parser.py        # CV text extraction (PDF/DOCX/MD/TXT)
-  search_agent.py     # Profile extraction and job search
+  search_api/
+    search_agent.py   # Profile extraction and job search orchestration
+    search_provider.py # Provider abstraction + routing/factory
+    bundesagentur.py  # Bundesagentur für Arbeit provider
+    serpapi_provider.py # SerpApi provider
   evaluator_agent.py  # Job scoring and career summary
   models.py           # Pydantic data models
   cache.py            # JSON-based result caching
@@ -165,6 +169,12 @@ immermatch/
     privacy.py        # Privacy policy
 daily_task.py         # Daily digest cron job (GitHub Actions)
 setup_db.py           # Database schema checker / migration helper
+docs/
+  strategy/
+    ROADMAP.md        # Product roadmap and priorities
+  search-api/
+    AGENT.md          # Search API decision log + specialist guidance
+    Improving Job Search API Results.md  # Search quality research
 tests/                # tests (all mocked)
 ```
 

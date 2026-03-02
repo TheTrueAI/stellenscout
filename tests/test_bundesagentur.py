@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 
-from immermatch.bundesagentur import (
+from immermatch.search_api.bundesagentur import (
     BundesagenturProvider,
     _build_ba_link,
     _clean_html,
@@ -269,7 +269,7 @@ class TestFetchDetail:
         client = MagicMock(spec=httpx.Client)
         client.get.side_effect = [error_resp, ok_resp]
 
-        with patch("immermatch.bundesagentur.time.sleep"):
+        with patch("immermatch.search_api.bundesagentur.time.sleep"):
             result = _fetch_detail(client, "REF-123")
         assert result == detail
 
@@ -285,7 +285,7 @@ class TestFetchDetail:
         client = MagicMock(spec=httpx.Client)
         client.get.side_effect = [blocked_resp, ok_resp]
 
-        with patch("immermatch.bundesagentur.time.sleep"):
+        with patch("immermatch.search_api.bundesagentur.time.sleep"):
             result = _fetch_detail(client, "REF-123")
         assert result == detail
 
@@ -298,7 +298,7 @@ class TestFetchDetail:
         client = MagicMock(spec=httpx.Client)
         client.get.side_effect = [httpx.ConnectError("timeout"), ok_resp]
 
-        with patch("immermatch.bundesagentur.time.sleep"):
+        with patch("immermatch.search_api.bundesagentur.time.sleep"):
             result = _fetch_detail(client, "REF-123")
         assert result == detail
 
@@ -306,7 +306,7 @@ class TestFetchDetail:
         client = MagicMock(spec=httpx.Client)
         client.get.side_effect = httpx.ConnectError("down")
 
-        with patch("immermatch.bundesagentur.time.sleep"):
+        with patch("immermatch.search_api.bundesagentur.time.sleep"):
             result = _fetch_detail(client, "REF-123")
         assert result == {}
 
@@ -398,7 +398,7 @@ class TestBundesagenturProviderPagination:
         provider = BundesagenturProvider()
         with (
             patch.object(provider, "_get_with_retry", return_value=mock_resp),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             items = provider._search_items("Dev", "Berlin", max_results=50)
 
@@ -426,7 +426,7 @@ class TestBundesagenturProviderPagination:
         provider = BundesagenturProvider()
         with (
             patch.object(provider, "_get_with_retry", side_effect=mock_get),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             items = provider._search_items("Dev", "Berlin", max_results=100)
 
@@ -442,7 +442,7 @@ class TestBundesagenturProviderErrors:
         provider = BundesagenturProvider()
         with (
             patch.object(provider, "_get_with_retry", return_value=None),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             items = provider._search_items("Dev", "Berlin", max_results=50)
         assert items == []
@@ -457,7 +457,7 @@ class TestBundesagenturProviderErrors:
         client = MagicMock(spec=httpx.Client)
         client.get.side_effect = [blocked_resp, ok_resp]
 
-        with patch("immermatch.bundesagentur.time.sleep"):
+        with patch("immermatch.search_api.bundesagentur.time.sleep"):
             result = BundesagenturProvider._get_with_retry(client, "https://example.com", {})
 
         assert result is ok_resp
@@ -487,7 +487,7 @@ class TestFetchDetailApi:
         client = MagicMock(spec=httpx.Client)
         client.get.side_effect = [blocked_resp, ok_resp]
 
-        with patch("immermatch.bundesagentur.time.sleep"):
+        with patch("immermatch.search_api.bundesagentur.time.sleep"):
             result = _fetch_detail_api(client, "REF-123")
 
         assert result == detail
@@ -508,9 +508,12 @@ class TestEnrich:
 
         provider = BundesagenturProvider()
         with (
-            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
-            patch("immermatch.bundesagentur._fetch_detail", side_effect=lambda _c, refnr: details.get(refnr, {})),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur._fetch_detail_api", return_value={}),
+            patch(
+                "immermatch.search_api.bundesagentur._fetch_detail",
+                side_effect=lambda _c, refnr: details.get(refnr, {}),
+            ),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
@@ -523,9 +526,9 @@ class TestEnrich:
 
         provider = BundesagenturProvider()
         with (
-            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
-            patch("immermatch.bundesagentur._fetch_detail", return_value={}),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.search_api.bundesagentur._fetch_detail", return_value={}),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
@@ -539,9 +542,9 @@ class TestEnrich:
 
         provider = BundesagenturProvider()
         with (
-            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
-            patch("immermatch.bundesagentur._fetch_detail", return_value=detail),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.search_api.bundesagentur._fetch_detail", return_value=detail),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
@@ -555,9 +558,9 @@ class TestEnrich:
 
         provider = BundesagenturProvider(detail_strategy="api_then_html")
         with (
-            patch("immermatch.bundesagentur._fetch_detail_api", return_value={}),
-            patch("immermatch.bundesagentur._fetch_detail", return_value=html_detail),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur._fetch_detail_api", return_value={}),
+            patch("immermatch.search_api.bundesagentur._fetch_detail", return_value=html_detail),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
@@ -570,9 +573,9 @@ class TestEnrich:
 
         provider = BundesagenturProvider(detail_strategy="api_only")
         with (
-            patch("immermatch.bundesagentur._fetch_detail_api", return_value=api_detail),
-            patch("immermatch.bundesagentur._fetch_detail", return_value={}),
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur._fetch_detail_api", return_value=api_detail),
+            patch("immermatch.search_api.bundesagentur._fetch_detail", return_value={}),
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
@@ -585,9 +588,9 @@ class TestEnrich:
 
         provider = BundesagenturProvider(detail_strategy="html_only")
         with (
-            patch("immermatch.bundesagentur._fetch_detail", return_value=html_detail),
-            patch("immermatch.bundesagentur._fetch_detail_api") as mock_api,
-            patch("immermatch.bundesagentur.httpx.Client"),
+            patch("immermatch.search_api.bundesagentur._fetch_detail", return_value=html_detail),
+            patch("immermatch.search_api.bundesagentur._fetch_detail_api") as mock_api,
+            patch("immermatch.search_api.bundesagentur.httpx.Client"),
         ):
             listings = provider._enrich(items)
 
@@ -600,7 +603,7 @@ class TestSearchProviderProtocol:
     """Verify BundesagenturProvider satisfies the SearchProvider protocol."""
 
     def test_conforms_to_protocol(self) -> None:
-        from immermatch.search_provider import SearchProvider
+        from immermatch.search_api.search_provider import SearchProvider
 
         provider = BundesagenturProvider()
         assert isinstance(provider, SearchProvider)

@@ -20,7 +20,7 @@ from immermatch.models import (
     JobEvaluation,
     JobListing,
 )
-from immermatch.search_agent import (
+from immermatch.search_api.search_agent import (
     generate_search_queries,
     profile_candidate,
     search_all_queries,
@@ -338,7 +338,7 @@ class TestFullPipelineTechCV:
     """End-to-end pipeline with the tech CV (sample.md)."""
 
     @patch("immermatch.evaluator_agent.call_gemini")
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_full_pipeline_happy_path(
         self,
         mock_search_gemini: MagicMock,
@@ -410,7 +410,7 @@ class TestFullPipelineSustainabilityCV:
     """End-to-end pipeline with the non-tech sustainability CV."""
 
     @patch("immermatch.evaluator_agent.call_gemini")
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_full_pipeline_non_tech_cv(
         self,
         mock_search_gemini: MagicMock,
@@ -482,7 +482,7 @@ class TestFullPipelineSustainabilityCV:
 class TestProfileOutputStructure:
     """Verify the profile output structure for different CV types."""
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_tech_profile_has_all_fields(
         self,
         mock_gemini: MagicMock,
@@ -506,7 +506,7 @@ class TestProfileOutputStructure:
         assert all(w.company for w in profile.work_history)
         assert len(profile.education_history) >= 1
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_sustainability_profile_has_all_fields(
         self,
         mock_gemini: MagicMock,
@@ -529,7 +529,7 @@ class TestProfileOutputStructure:
 class TestQueryGeneration:
     """Verify query generation integrates with the profile stage."""
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_queries_are_strings_and_correct_count(
         self,
         mock_gemini: MagicMock,
@@ -676,7 +676,7 @@ class TestEmptySearchResults:
     """Verify the pipeline handles empty search results gracefully."""
 
     @patch("immermatch.evaluator_agent.call_gemini")
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_empty_search_produces_empty_evaluations(
         self,
         mock_search_gemini: MagicMock,
@@ -719,7 +719,7 @@ class TestDataFlowBetweenStages:
     """Verify that data produced by earlier stages reaches later stages."""
 
     @patch("immermatch.evaluator_agent.call_gemini")
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_cv_data_flows_through_all_stages(
         self,
         mock_search_gemini: MagicMock,

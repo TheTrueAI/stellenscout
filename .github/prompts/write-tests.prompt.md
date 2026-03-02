@@ -6,8 +6,8 @@ When writing tests for a module in `immermatch/`:
    - Gemini: `@patch("immermatch.<module>.call_gemini")`
    - Supabase: `@patch("immermatch.db.get_admin_client")`
    - Resend: `@patch("immermatch.emailer.resend")`
-   - SerpApi: `@patch("immermatch.serpapi_provider.serpapi_search")`
-   - Bundesagentur: `@patch("immermatch.bundesagentur.requests.get")`
+   - SerpApi: `@patch("immermatch.search_api.serpapi_provider.GoogleSearch.get_dict")`
+   - Bundesagentur: `@patch("immermatch.search_api.bundesagentur.httpx.Client.get")`
 4. **Use shared fixtures** from `tests/conftest.py`:
    - `sample_profile` — `CandidateProfile` with work history
    - `sample_job` — `JobListing` with apply options

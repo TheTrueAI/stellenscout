@@ -1,4 +1,4 @@
-"""Tests for immermatch.search_agent — pure helper functions and search_all_queries orchestration."""
+"""Tests for immermatch.search_api.search_agent — helper functions and search orchestration."""
 
 import json
 from typing import ClassVar
@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from immermatch.models import ApplyOption, CandidateProfile, JobListing
-from immermatch.search_agent import (
+from immermatch.search_api.search_agent import (
     _infer_gl,
     _is_remote_only,
     _localise_query,
@@ -17,7 +17,7 @@ from immermatch.search_agent import (
     profile_candidate,
     search_all_queries,
 )
-from immermatch.search_provider import CombinedSearchProvider
+from immermatch.search_api.search_provider import CombinedSearchProvider
 
 
 class TestIsRemoteOnly:
@@ -274,7 +274,7 @@ class TestSearchAllQueries:
         assert len(found_batches) == 1
         assert found_batches[0][0].title == "Dev"
 
-    @patch("immermatch.search_agent.get_provider")
+    @patch("immermatch.search_api.search_agent.get_provider")
     def test_defaults_to_get_provider(self, mock_gp: MagicMock):
         """When no provider given, get_provider(location) is called."""
         mock_provider = MagicMock()
@@ -320,7 +320,7 @@ class TestSearchAllQueries:
         assert ba_count >= 30
         assert serp_count >= 30
 
-    @patch("immermatch.search_agent.logger")
+    @patch("immermatch.search_api.search_agent.logger")
     def test_logs_source_counts(self, mock_logger: MagicMock):
         provider = self._make_provider(
             [
@@ -411,7 +411,7 @@ class TestSearchAllQueries:
 
 
 class TestLlmJsonRecovery:
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_profile_candidate_retries_after_invalid_json(self, mock_call_gemini: MagicMock):
         valid_profile = {
             "skills": ["Python", "SQL"],
@@ -442,7 +442,7 @@ class TestLlmJsonRecovery:
         assert result.experience_level == "Mid"
         assert mock_call_gemini.call_count == 2
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_generate_search_queries_retries_after_invalid_json(self, mock_call_gemini: MagicMock):
         profile = CandidateProfile(
             skills=["Python"],
@@ -472,7 +472,7 @@ class TestLlmJsonRecovery:
         assert queries == ["python developer berlin", "backend berlin"]
         assert mock_call_gemini.call_count == 2
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_profile_candidate_raises_after_all_retries_exhausted(self, mock_call_gemini: MagicMock):
         mock_call_gemini.side_effect = ["not json", "still not json", "also not json"]
 
@@ -481,7 +481,7 @@ class TestLlmJsonRecovery:
 
         assert mock_call_gemini.call_count == 3
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_generate_search_queries_returns_empty_list_after_all_retries_fail(self, mock_call_gemini: MagicMock):
         profile = CandidateProfile(
             skills=["Python"],
@@ -511,7 +511,7 @@ class TestLlmJsonRecovery:
         assert queries == []
         assert mock_call_gemini.call_count == 2
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_profile_candidate_retries_after_validation_error(self, mock_call_gemini: MagicMock):
         base_profile = {
             "skills": ["Python", "SQL"],
@@ -545,7 +545,7 @@ class TestLlmJsonRecovery:
         assert result.experience_level == "Mid"
         assert mock_call_gemini.call_count == 2
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_profile_candidate_retries_when_json_is_not_dict(self, mock_call_gemini: MagicMock):
         valid_profile = {
             "skills": ["Python", "SQL"],
@@ -594,7 +594,7 @@ class TestGenerateSearchQueriesProviderPrompt:
         education_history=[],
     )
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_ba_provider_uses_ba_prompt(self, mock_call_gemini: MagicMock):
         mock_call_gemini.return_value = '["Softwareentwickler", "Python Developer"]'
         ba_provider = MagicMock()
@@ -612,7 +612,7 @@ class TestGenerateSearchQueriesProviderPrompt:
         assert "Bundesagentur" in prompt_sent
         assert "Do NOT include any city" in prompt_sent
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_other_provider_uses_default_prompt(self, mock_call_gemini: MagicMock):
         mock_call_gemini.return_value = '["Python Developer Berlin"]'
         other_provider = MagicMock()
@@ -630,7 +630,7 @@ class TestGenerateSearchQueriesProviderPrompt:
         assert "Google Jobs" in prompt_sent
         assert "LOCAL names" in prompt_sent
 
-    @patch("immermatch.search_agent.call_gemini")
+    @patch("immermatch.search_api.search_agent.call_gemini")
     def test_combined_provider_generates_queries_per_child_provider(self, mock_call_gemini: MagicMock):
         mock_call_gemini.side_effect = [
             '["Softwareentwickler", "Datenanalyst"]',

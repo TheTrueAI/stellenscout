@@ -24,7 +24,7 @@ from typing import Literal
 
 import httpx
 
-from .models import ApplyOption, JobListing
+from ..models import ApplyOption, JobListing
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,7 @@ def _parse_search_results(data: dict) -> list[dict]:
 class BundesagenturProvider:
     """Job-search provider backed by the Bundesagentur für Arbeit API.
 
-    Satisfies the :class:`~immermatch.search_provider.SearchProvider` protocol.
+    Satisfies the :class:`~immermatch.search_api.search_provider.SearchProvider` protocol.
     """
 
     name: str = "Bundesagentur für Arbeit"

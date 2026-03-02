@@ -37,9 +37,9 @@ source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff f
 | `app.py` | Streamlit UI: CV upload → profile → search → evaluate → display |
 | `cv_parser.py` | Extract text from PDF/DOCX/MD/TXT |
 | `llm.py` | Gemini API wrapper with retry/backoff |
-| `search_agent.py` | Generate search queries (LLM) + orchestrate search |
-| `search_provider.py` | `SearchProvider` protocol + `get_provider()` factory |
-| `bundesagentur.py` | Bundesagentur für Arbeit API provider (default) |
+| `search_api/search_agent.py` | Generate search queries (LLM) + orchestrate search |
+| `search_api/search_provider.py` | `SearchProvider` protocol + `get_provider()` factory |
+| `search_api/bundesagentur.py` | Bundesagentur für Arbeit API provider (default) |
 | `evaluator_agent.py` | Score jobs against profile (LLM) + career summary |
 | `models.py` | All Pydantic schemas (`CandidateProfile`, `JobListing`, etc.) |
 | `cache.py` | JSON file cache in `.immermatch_cache/` |

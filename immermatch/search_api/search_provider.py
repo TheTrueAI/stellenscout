@@ -12,7 +12,7 @@ import math
 import os
 from typing import Protocol, runtime_checkable
 
-from .models import JobListing
+from ..models import JobListing
 
 logger = logging.getLogger(__name__)
 
