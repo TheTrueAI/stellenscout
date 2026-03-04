@@ -180,5 +180,5 @@ These could theoretically close the gap but were not pursued:
    *search query quality* (fewer irrelevant jobs returned in the first place) or batch
    Gemini calls more efficiently. Both approaches are simpler and more reliable.
 
-The benchmarking code remains in `prefilter_benchmarking/` for historical reference but
-is not part of the active codebase.
+The experimental benchmarking code that supported this investigation has been removed
+from this repository and is no longer part of the active codebase.
