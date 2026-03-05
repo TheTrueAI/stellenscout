@@ -47,7 +47,7 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 - [ ] **Personalize the UI** — greet user by first name extracted from CV profile
 - [ ] **Add "Edit Profile" step** — let user tweak skills/roles/preferences before searching (this is already in Open Issues)
 - [ ] **Add a "Preferences" text input** — free-form like *"I want remote fintech jobs, no big corporations"* → append to profile prompt
-- [ ] **Show job age warning** — if `posted_at` is >30 days, badge it as "possibly expired"
+- [x] **Show job age warning** — reliability badges (verified/aggregator/unverified) on job cards with tooltip; stale listings (>14 days) filtered out; `chips=date_posted:week` at API level
 - [ ] **Improve job cards** — show apply links more prominently, add company logos via Clearbit/Logo.dev
 - [ ] **Add digest preferences UI** — allow users to change `min_score` and cadence (daily/weekly) after subscription
 - [ ] **Remove random jobs from homepage before CV is entered** — show a friendly welcome message instead of empty job cards
@@ -92,7 +92,10 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 - [ ] **Implement provider fallback strategy** — graceful degradation when a provider is down
 
 ### 3.2 — Stale Job Detection (Open Issue)
-- [ ] **HEAD request validation** — before including a job, check if the apply URL returns 200
+- [x] **HEAD request validation** — concurrent HEAD requests check apply URLs for dead links (404/410/403) and redirect-to-homepage patterns (`link_validator.py`)
+- [x] **Reliability badges** — `verified`/`aggregator`/`unverified` classification with coloured UI badges and tooltips
+- [x] **Blocked portal externalization** — domain blocklist moved to `blocked_portals.txt` with feedback tooling (`scripts/label_reliability.py`, `scripts/analyze_labels.py`)
+- [x] **Temporal freshness** — `chips=date_posted:week` at API level + `_is_stale()` defense-in-depth for >14-day listings
 - [ ] **Track job first-seen date in DB** — auto-expire jobs older than 45 days
 - [ ] **User feedback loop** — "This job no longer exists" button → mark as expired in DB
 - [ ] **Add portal quality scoring** — down-rank sources with high dead-link rates and low apply success

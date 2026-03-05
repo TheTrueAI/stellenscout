@@ -79,6 +79,10 @@ class JobListing(BaseModel):
     apply_options: list[ApplyOption] = Field(
         default_factory=list, description="List of direct application links (LinkedIn, company site, etc.)"
     )
+    reliability: Literal["verified", "aggregator", "unverified"] = Field(
+        default="unverified",
+        description="Source reliability: verified (govt/direct), aggregator (known board), unverified (unknown)",
+    )
 
 
 class JobEvaluation(BaseModel):

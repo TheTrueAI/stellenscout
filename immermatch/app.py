@@ -46,6 +46,7 @@ from immermatch.db import SUBSCRIPTION_DAYS  # noqa: E402
 from immermatch.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from immermatch.llm import create_client  # noqa: E402
 from immermatch.models import CandidateProfile, EvaluatedJob, JobListing  # noqa: E402
+from immermatch.search_api.link_validator import validate_jobs  # noqa: E402
 from immermatch.search_api.search_agent import (  # noqa: E402
     generate_search_queries,
     profile_candidate,
@@ -177,6 +178,18 @@ def _inject_custom_css() -> None:
     .score-yellow { background: #fef9c3; color: #854d0e; }
     .score-orange { background: #ffedd5; color: #9a3412; }
     .score-red    { background: #fee2e2; color: #991b1b; }
+
+    /* Reliability badges */
+    .reliability-badge {
+        display: inline-block;
+        padding: 0.1rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .reliability-verified   { background: #dcfce7; color: #166534; }
+    .reliability-aggregator { background: #fef9c3; color: #854d0e; }
+    .reliability-unverified { background: #fee2e2; color: #991b1b; }
 
     /* General spacing */
     .block-container { padding-top: 2rem; }
@@ -340,6 +353,26 @@ def _render_profile(profile: CandidateProfile) -> None:
 # ---------------------------------------------------------------------------
 # Helper: score helpers
 # ---------------------------------------------------------------------------
+
+_RELIABILITY_INFO: dict[str, tuple[str, str, str]] = {
+    "verified": (
+        "Verified",
+        "reliability-verified",
+        "Listed on Bundesagentur für Arbeit, a government-regulated job database",
+    ),
+    "aggregator": (
+        "Job Board",
+        "reliability-aggregator",
+        "Found via a known job board (LinkedIn, StepStone, etc.)",
+    ),
+    "unverified": (
+        "Unverified",
+        "reliability-unverified",
+        "Source could not be verified — apply with caution",
+    ),
+}
+
+
 def _score_emoji(score: int) -> str:
     if score >= 85:
         return "🟢"
@@ -379,7 +412,9 @@ def _render_job_card(ej: EvaluatedJob) -> None:
             )
 
         with center:
-            st.markdown(f"**{ej.job.title}** @ {ej.job.company_name}")
+            label, css, tooltip = _RELIABILITY_INFO.get(ej.job.reliability, ("", "", ""))
+            badge_html = f' <span class="reliability-badge {css}" title="{tooltip}">{label}</span>' if label else ""
+            st.markdown(f"**{ej.job.title}** @ {ej.job.company_name}{badge_html}", unsafe_allow_html=True)
             st.caption(f"📍 {ej.job.location}" + (f"  •  🕐 {ej.job.posted_at}" if ej.job.posted_at else ""))
             st.markdown(ej.evaluation.reasoning)
             if missing:
@@ -833,8 +868,13 @@ def _run_pipeline() -> None:
                     on_jobs_found=_on_jobs_found,
                     provider=provider,
                 )
+                pre_validation = len(jobs)
+                jobs = validate_jobs(jobs)
                 cache.save_jobs(jobs, location)
-                search_status.update(label=f"✅ Found {len(jobs)} unique jobs", state="complete")
+                validated_note = (
+                    f" ({pre_validation - len(jobs)} dead links removed)" if len(jobs) < pre_validation else ""
+                )
+                search_status.update(label=f"✅ Found {len(jobs)} unique jobs{validated_note}", state="complete")
             search_progress.empty()
 
             if not jobs:

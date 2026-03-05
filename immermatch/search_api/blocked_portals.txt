@@ -1,0 +1,34 @@
+# Blocked job portals — questionable aggregators, paywalls, scam sites.
+# One domain substring per line. Lines starting with # are comments.
+
+bebee
+trabajo
+jooble
+adzuna
+jobrapido
+neuvoo
+mitula
+trovit
+jobomas
+jobijoba
+talent
+jobatus
+jobsora
+studysmarter
+jobilize
+learn4good
+grabjobs
+jobtensor
+zycto
+terra.do
+jobzmall
+simplyhired
+
+# Additions from research doc
+kimeta
+zuhausejobs
+whatjobs
+careerjet
+
+# Additions from label feedback
+climatetechlist

@@ -118,8 +118,9 @@ class SearchProvider(Protocol):
 ```
 
 - **`BundesagenturProvider`** (default) — queries the free Bundesagentur für Arbeit REST API (`rest.arbeitsagentur.de`). Handles pagination, parallel detail-fetching, and retry logic internally.
-- **`SerpApiProvider`** — wraps Google Jobs via SerpApi. Handles localisation, `gl` code inference, and blocked portal filtering internally.
+- **`SerpApiProvider`** — wraps Google Jobs via SerpApi. Handles localisation, `gl` code inference, blocked portal filtering, reliability classification, and staleness filtering internally.
 - **`get_provider(location)`** factory — currently always returns `BundesagenturProvider`. Future: route by country.
+- **`validate_jobs()`** (`link_validator.py`) — post-search concurrent HEAD-request validation. Drops dead links and redirect-to-homepage patterns for non-verified listings.
 
 **Search orchestration (`search_all_queries()`):**
 - Iterates queries in parallel (`ThreadPoolExecutor`, max 5 workers)
@@ -217,9 +218,12 @@ BA_API_KEY = "jobboerse-jobsuche"  # pragma: allowlist secret  # public API key,
 SERPAPI_PARAMS = {
     "engine": "google_jobs",
     "hl": "en",           # Language: English (for broader results)
+    "chips": "date_posted:week",  # Temporal freshness filter
 }
 # gl= country code is inferred from location (see _infer_gl())
 # Pagination uses next_page_token (not deprecated 'start' parameter)
+# Blocked portals: immermatch/search_api/blocked_portals.txt
+# Trusted portals: _TRUSTED_PORTALS set in serpapi_provider.py
 ```
 
 ### Rate Limiting & Retry
@@ -229,13 +233,27 @@ SERPAPI_PARAMS = {
 - Bundesagentur API: retry up to 3 times on 5xx errors with exponential backoff
 - SerpApi: 100 searches/month on free tier (not currently used)
 
-### Blocked Job Portals (SerpApi only)
+### SerpAPI Result Quality Pipeline
 
-Jobs from the following portals are discarded during search result parsing (see `immermatch/search_api/serpapi_provider.py:BLOCKED_PORTALS`):
+SerpAPI listings pass through multiple quality filters before reaching the user:
 
-> bebee, trabajo, jooble, adzuna, jobrapido, neuvoo, mitula, trovit, jobomas, jobijoba, talent, jobatus, jobsora, studysmarter, jobilize, learn4good, grabjobs, jobtensor, zycto, terra.do, jobzmall, simplyhired
+1. **Temporal freshness** — `chips=date_posted:week` at the Google Jobs API level filters to recent listings. Defense-in-depth: `_is_stale()` drops listings >14 days old based on `posted_at` text.
 
-Listings with no remaining apply links after filtering are skipped entirely.
+2. **Blocked portal filtering** — Domains in `immermatch/search_api/blocked_portals.txt` are excluded (one domain per line, `#` comments). Domain matching uses `urlparse().netloc`. Current list includes ~27 low-quality aggregators.
+
+3. **Reliability classification** — Each listing gets a `reliability` badge:
+   - `"verified"` — Bundesagentur listings (set in `bundesagentur.py`)
+   - `"aggregator"` — SerpAPI results with apply links from known job boards (`_TRUSTED_PORTALS`: LinkedIn, StepStone, Indeed, Softgarden, Oproma, etc.) or career page sources
+   - `"unverified"` — SerpAPI results from unknown sources
+
+4. **Link validation** (`immermatch/search_api/link_validator.py`) — After search, concurrent HEAD requests check apply URLs for dead links (404/410/403) and redirect-to-homepage patterns. Only non-verified listings are checked. Jobs with all dead apply links are dropped.
+
+5. **UI badges** — Reliability rendered as coloured pill badges on job cards with hover tooltips.
+
+### Feedback tooling
+
+- `scripts/label_reliability.py` — Extracts SerpAPI jobs from cache into `reliability_labels.jsonl` for manual review
+- `scripts/analyze_labels.py` — Computes confusion matrix and suggests domain additions for trusted/blocked lists
 
 ---
 
@@ -288,6 +306,7 @@ class JobListing(BaseModel):
     posted_at: str = ""
     source: str = ""                     # search provider that produced this listing
     apply_options: list[ApplyOption] = []  # direct apply links (LinkedIn, career page, etc.)
+    reliability: Literal["verified", "aggregator", "unverified"] = "unverified"  # source trust level
 
 class JobEvaluation(BaseModel):
     score: int                           # 0-100, constrained ge=0 le=100
@@ -517,6 +536,8 @@ Schema setup: run `python setup_db.py` to check tables and print migration SQL.
 | `test_integration.py` (11 tests) | Full pipeline | End-to-end: CV text → profile → queries → search → evaluate → summary, all services mocked |
 | `test_pages_unsubscribe.py` (6 tests) | `pages/unsubscribe.py` | Unsubscribe page logic: token validation, DB deactivation, error states (AppTest) |
 | `test_pages_verify.py` (7 tests) | `pages/verify.py` | DOI verification page: token confirmation, welcome email, expiry setting, error states (AppTest) |
+| `test_serpapi_provider.py` (11 tests) | `search_api/serpapi_provider.py` | Blocked portal loading, staleness filter, reliability classification, chips parameter |
+| `test_link_validator.py` (14 tests) | `search_api/link_validator.py` | Path depth, redirect detection, dead link dropping, mixed links, network errors, BA passthrough |
 | `test_search_provider.py` (2 tests) | `search_api/search_provider.py` | Provider helpers: `parse_provider_query()`, combined provider behavior |
 
 ### Testing conventions

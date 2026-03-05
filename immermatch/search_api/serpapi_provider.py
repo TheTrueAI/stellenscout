@@ -9,39 +9,66 @@ from __future__ import annotations
 
 import os
 import re
+from pathlib import Path
+from typing import Literal
+from urllib.parse import urlparse
 
 from serpapi import GoogleSearch
 
 from ..models import ApplyOption, JobListing
 
 # ---------------------------------------------------------------------------
-# Blocked portal list (questionable job aggregators / paywalls)
+# Blocked portal list (loaded from external file)
 # ---------------------------------------------------------------------------
 
-BLOCKED_PORTALS = {
-    "bebee",
-    "trabajo",
-    "jooble",
-    "adzuna",
-    "jobrapido",
-    "neuvoo",
-    "mitula",
-    "trovit",
-    "jobomas",
-    "jobijoba",
-    "talent",
-    "jobatus",
-    "jobsora",
-    "studysmarter",
-    "jobilize",
-    "learn4good",
-    "grabjobs",
-    "jobtensor",
-    "zycto",
-    "terra.do",
-    "jobzmall",
-    "simplyhired",
+
+def _load_blocked_portals() -> set[str]:
+    path = Path(__file__).parent / "blocked_portals.txt"
+    return {
+        line.strip().lower()
+        for line in path.read_text().splitlines()
+        if line.strip() and not line.strip().startswith("#")
+    }
+
+
+BLOCKED_PORTALS: set[str] = _load_blocked_portals()
+
+# ---------------------------------------------------------------------------
+# Trusted portal list (known legitimate job boards)
+# ---------------------------------------------------------------------------
+
+_TRUSTED_PORTALS: set[str] = {
+    "linkedin",
+    "xing",
+    "stepstone",
+    "indeed",
+    "glassdoor",
+    "kununu",
+    "karriere",
+    "monster",
+    "softgarden",
+    "oproma",
+    "personio",
+    "ashby",
 }
+
+# ---------------------------------------------------------------------------
+# Staleness filter
+# ---------------------------------------------------------------------------
+
+_STALE_THRESHOLD_DAYS = 14
+
+
+def _is_stale(posted_at: str) -> bool:
+    """Return True when a listing's posted_at text indicates it is too old."""
+    if not posted_at:
+        return False
+    lower = posted_at.lower().strip()
+    match = re.match(r"(\d+)\+?\s*days?\s*ago", lower)
+    if match and int(match.group(1)) > _STALE_THRESHOLD_DAYS:
+        return True
+    return "month" in lower or "year" in lower
+
 
 # ---------------------------------------------------------------------------
 # Google gl= country codes
@@ -252,6 +279,10 @@ def parse_job_results(results: dict) -> list[JobListing]:
     jobs: list[JobListing] = []
 
     for job_data in results.get("jobs_results", []):
+        posted_at = job_data.get("detected_extensions", {}).get("posted_at", "")
+        if _is_stale(posted_at):
+            continue
+
         description_parts = []
         if "description" in job_data:
             description_parts.append(job_data["description"])
@@ -261,14 +292,27 @@ def parse_job_results(results: dict) -> list[JobListing]:
                     description_parts.extend(highlight["items"])
 
         apply_options = []
+        has_trusted = False
+        has_company_career = False
         for option in job_data.get("apply_options", []):
-            if "title" in option and "link" in option:
-                url = option["link"].lower()
-                if not any(blocked in url for blocked in BLOCKED_PORTALS):
-                    apply_options.append(ApplyOption(source=option["title"], url=option["link"]))
+            if "title" not in option or "link" not in option:
+                continue
+            domain = urlparse(option["link"]).netloc.lower()
+            if any(blocked in domain for blocked in BLOCKED_PORTALS):
+                continue
+            apply_options.append(ApplyOption(source=option["title"], url=option["link"]))
+            if any(tp in domain for tp in _TRUSTED_PORTALS):
+                has_trusted = True
+            source_lower = option["title"].lower()
+            if "career" in source_lower or "company" in source_lower:
+                has_company_career = True
 
         if not apply_options:
             continue
+
+        reliability: Literal["aggregator", "unverified"] = (
+            "aggregator" if (has_trusted or has_company_career) else "unverified"
+        )
 
         job = JobListing(
             title=job_data.get("title", "Unknown"),
@@ -276,9 +320,10 @@ def parse_job_results(results: dict) -> list[JobListing]:
             location=job_data.get("location", "Unknown"),
             description="\n".join(description_parts),
             link=job_data.get("share_link", job_data.get("link", "")),
-            posted_at=job_data.get("detected_extensions", {}).get("posted_at", ""),
+            posted_at=posted_at,
             source="serpapi",
             apply_options=apply_options,
+            reliability=reliability,
         )
         jobs.append(job)
 
@@ -309,6 +354,7 @@ def search_jobs(
             "engine": "google_jobs",
             "q": query,
             "hl": "en",
+            "chips": "date_posted:week",
             "api_key": api_key,
         }
         if gl is not None:

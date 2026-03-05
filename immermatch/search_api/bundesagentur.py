@@ -25,6 +25,7 @@ from typing import Literal
 import httpx
 
 from ..models import ApplyOption, JobListing
+from ._constants import USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,7 @@ def _parse_listing(item: dict, detail: dict | None = None) -> JobListing | None:
         posted_at=item.get("aktuelleVeroeffentlichungsdatum", ""),
         source="bundesagentur",
         apply_options=apply_options,
+        reliability="verified",
     )
 
 
@@ -331,7 +333,7 @@ class BundesagenturProvider:
             httpx.Client(
                 timeout=30,
                 headers={
-                    "User-Agent": "Mozilla/5.0 (compatible; Immermatch/1.0)",
+                    "User-Agent": USER_AGENT,
                     "Accept": "text/html",
                 },
                 follow_redirects=True,
