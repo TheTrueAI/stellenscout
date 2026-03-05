@@ -5,7 +5,7 @@
 - No manual virtualenv activation is needed when using Makefile targets (`make check`, `make test`, etc.); the Makefile handles it.
 - Only activate `.venv` manually for direct Python/pip commands run outside Make targets.
 - Python 3.10+, all dependencies installed in `.venv`
-- Gemini model: `gemini-3-flash-preview` via `google-genai` package (NOT the deprecated `google.generativeai`)
+- Gemini model: `gemini-3.1-flash-lite-preview` via `google-genai` package (NOT the deprecated `google.generativeai`)
 
 ## After every code change
 

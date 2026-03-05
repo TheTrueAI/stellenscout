@@ -173,7 +173,7 @@ IMPORTANT OUTPUT RULES:
     last_error: Exception | None = None
 
     for attempt in range(3):
-        content = call_gemini(client, prompt, temperature=0.3, max_tokens=8192)
+        content = call_gemini(client, prompt, max_tokens=8192, thinking_level="low")
 
         try:
             data = parse_json(content)
@@ -287,7 +287,7 @@ def _generate_search_queries_for_provider(
     )
 
     for attempt in range(2):
-        content = call_gemini(client, prompt if attempt == 0 else retry_prompt, temperature=0.5, max_tokens=8192)
+        content = call_gemini(client, prompt if attempt == 0 else retry_prompt, max_tokens=8192)
         try:
             queries = parse_json(content)
         except ValueError:

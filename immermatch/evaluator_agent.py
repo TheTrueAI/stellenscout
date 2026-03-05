@@ -97,7 +97,7 @@ Evaluate this job match and return JSON."""
     prompt = f"{SCREENER_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     try:
-        content = call_gemini(client, prompt, temperature=0.2, max_tokens=4096)
+        content = call_gemini(client, prompt, max_tokens=4096)
     except (ServerError, ClientError):
         return JobEvaluation(score=50, reasoning="Could not evaluate (API error after retries)", missing_skills=[])
 
@@ -252,4 +252,4 @@ Write the career summary now."""
 
     prompt = f"{ADVISOR_SYSTEM_PROMPT}\n\n{user_prompt}"
 
-    return call_gemini(client, prompt, temperature=0.5, max_tokens=2048)
+    return call_gemini(client, prompt, max_tokens=2048)

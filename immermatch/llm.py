@@ -15,7 +15,7 @@ from google.genai.errors import ClientError, ServerError
 MAX_RETRIES = 5
 BASE_DELAY = 3  # seconds
 
-MODEL = "gemini-3-flash-preview"
+MODEL = "gemini-3.1-flash-lite-preview"
 
 # Concurrency limiter — prevents thundering-herd 429s when many threads
 # call Gemini simultaneously (e.g. parallel job evaluation).
@@ -35,14 +35,19 @@ def create_client() -> genai.Client:
 def call_gemini(
     client: genai.Client,
     prompt: str,
-    temperature: float = 0.3,
+    temperature: float = 1.0,
     max_tokens: int = 1024,
+    thinking_level: types.ThinkingLevel | str | None = None,
 ) -> str:
     """Make a Gemini API call with retry logic.
 
     Retries on 429 (rate limit) and 503 (overloaded) with exponential backoff.
     """
     last_exception: Exception | None = None
+
+    thinking_config = (
+        types.ThinkingConfig(thinking_level=types.ThinkingLevel(thinking_level)) if thinking_level else None
+    )
 
     for attempt in range(MAX_RETRIES):
         try:
@@ -53,6 +58,7 @@ def call_gemini(
                     config=types.GenerateContentConfig(
                         temperature=temperature,
                         max_output_tokens=max_tokens,
+                        thinking_config=thinking_config,
                     ),
                 )
             return response.text or ""

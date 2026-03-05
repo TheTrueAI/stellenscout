@@ -3,7 +3,7 @@
 This document defines the persona, context, and instruction sets for the AI agents used in Immermatch.
 
 **LLM Provider:** Google AI Studio (Gemini)
-**Model:** gemini-3-flash-preview
+**Model:** gemini-3.1-flash-lite-preview
 **Package:** `google-genai` (not the deprecated `google.generativeai`)
 
 ## Environment Guidance (All Agents)
@@ -208,7 +208,7 @@ class SearchProvider(Protocol):
 
 ```python
 # Gemini model and retry
-MODEL = "gemini-3-flash-preview"
+MODEL = "gemini-3.1-flash-lite-preview"
 MAX_RETRIES = 5
 BASE_DELAY = 3  # seconds, exponential backoff with jitter
 
