@@ -189,7 +189,7 @@ def _inject_custom_css() -> None:
         font-weight: 600;
     }
     .reliability-verified   { background: #dcfce7; color: #166534; }
-    .reliability-aggregator { background: #fef9c3; color: #854d0e; }
+    .reliability-aggregator { background: #dcfce7; color: #166534; }
     .reliability-unverified { background: #fee2e2; color: #991b1b; }
 
     /* General spacing */
