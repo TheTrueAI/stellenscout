@@ -34,6 +34,7 @@ def sample_profile() -> CandidateProfile:
         certifications=["AWS Solutions Architect"],
         education=["MSc Computer Science, TU Munich"],
         summary="Senior engineer with 7 years of experience in Python and Go microservices.",
+        first_name="Max",
         work_history=[
             WorkEntry(
                 title="Senior Software Engineer",

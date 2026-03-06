@@ -57,6 +57,8 @@ class CandidateProfile(BaseModel):
         default_factory=list,
         description="Education entries with completion status",
     )
+    first_name: str = Field(default="", description="Candidate's first name extracted from the CV")
+    preferences: str = Field(default="", description="Free-form candidate preferences for job matching")
 
 
 class ApplyOption(BaseModel):

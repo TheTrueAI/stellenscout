@@ -75,7 +75,8 @@ def _impressum_line() -> str:
 def _build_html(jobs: list[dict], unsubscribe_url: str = "", target_location: str = "") -> str:
     """Build a full HTML email body for the daily digest."""
     today = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    rows = "\n".join(_build_job_row(j) for j in jobs)
+    sorted_jobs = sorted(jobs, key=lambda j: j.get("score") or 0, reverse=True)
+    rows = "\n".join(_build_job_row(j) for j in sorted_jobs)
     impressum = _impressum_line()
 
     safe_location = _esc(target_location)
@@ -372,6 +373,66 @@ def send_verification_email(email: str, verify_url: str) -> dict:  # type: ignor
             "from": from_addr,
             "to": [email],
             "subject": "Immermatch: Please confirm your email address",
+            "html": html,
+        }
+    )
+
+
+def send_manage_subscription_email(email: str, manage_url: str) -> dict:  # type: ignore[type-arg]
+    """Send a secure link for managing subscription preferences."""
+    api_key = os.environ.get("RESEND_API_KEY")
+    if not api_key:
+        raise ValueError("RESEND_API_KEY environment variable not set")
+
+    resend.api_key = api_key
+    from_addr = os.environ.get("RESEND_FROM", "Immermatch <digest@immermatch.dev>")
+    impressum = _impressum_line()
+
+    html = f"""\
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,
+'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f9fafb">
+  <div style="max-width:600px;margin:24px auto;background:#fff;
+              border-radius:8px;overflow:hidden;
+              border:1px solid #e5e7eb">
+    <div style="background:linear-gradient(135deg,#2563eb,#7c3aed);
+                padding:32px 24px;color:#fff;text-align:center">
+      <div style="font-size:36px;margin-bottom:8px">&#9881;&#65039;</div>
+      <h1 style="margin:0;font-size:24px">Manage your Immermatch subscription</h1>
+      <p style="margin:8px 0 0;opacity:.85;font-size:15px">Secure preferences update link</p>
+    </div>
+    <div style="padding:24px">
+      <p style="font-size:16px;color:#374151;margin:0 0 16px">
+        Click the button below to manage your digest preferences securely:</p>
+      <p style="text-align:center;margin:24px 0">
+        <a href="{_safe_url(manage_url)}"
+           style="background:#2563eb;color:#fff;padding:14px 36px;
+                  border-radius:6px;text-decoration:none;font-weight:600;
+                  font-size:16px;display:inline-block">
+          Manage preferences
+        </a>
+      </p>
+      <p style="color:#6b7280;font-size:13px;margin:0">
+        This link is valid for <strong>30 minutes</strong>. If you did not request this,
+        you can safely ignore this email.
+      </p>
+    </div>
+    <div style="padding:16px 24px;background:#f9fafb;
+                border-top:1px solid #e5e7eb;text-align:center;
+                color:#9ca3af;font-size:12px">
+      {impressum}
+    </div>
+  </div>
+</body>
+</html>"""
+
+    return resend.Emails.send(
+        {
+            "from": from_addr,
+            "to": [email],
+            "subject": "Immermatch: Manage your subscription preferences",
             "html": html,
         }
     )

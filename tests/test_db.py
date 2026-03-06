@@ -519,6 +519,78 @@ class TestSaveSubscriptionContext:
 
 
 # ---------------------------------------------------------------------------
+# TestUpdateSubscriberPreferences
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateSubscriberPreferences:
+    def test_updates_preferences(self):
+        client = _mock_client()
+        client.table.return_value.update.return_value.eq.return_value.execute.return_value = _make_execute(
+            data=[{"id": SUB_ID}]
+        )
+
+        result = db.update_subscriber_preferences(client, SUB_ID, min_score=80, cadence="weekly")
+
+        assert result is True
+        payload = client.table.return_value.update.call_args[0][0]
+        assert payload["min_score"] == 80
+        assert payload["cadence"] == "weekly"
+
+    def test_returns_false_on_no_match(self):
+        client = _mock_client()
+        client.table.return_value.update.return_value.eq.return_value.execute.return_value = _make_execute(data=[])
+
+        assert db.update_subscriber_preferences(client, SUB_ID, min_score=70, cadence="daily") is False
+
+    def test_invalid_cadence_raises(self):
+        client = _mock_client()
+
+        with pytest.raises(ValueError, match="cadence"):
+            db.update_subscriber_preferences(client, SUB_ID, min_score=70, cadence="monthly")
+
+
+class TestManageTokenHelpers:
+    def test_issue_manage_token_writes_token(self):
+        client = _mock_client()
+        client.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = (
+            _make_execute(data=[{"id": SUB_ID}])
+        )
+
+        ok = db.issue_manage_token(client, SUB_ID, token="manage-token", expires_at="2026-02-20T12:30:00Z")
+
+        assert ok is True
+        payload = client.table.return_value.update.call_args[0][0]
+        assert payload["confirmation_token"] == "manage-token"
+
+    def test_get_subscriber_by_manage_token_returns_active_unexpired(self):
+        client = _mock_client()
+        expires = (datetime.now(timezone.utc) + timedelta(minutes=10)).isoformat()
+        client.table.return_value.select.return_value.eq.return_value.eq.return_value.execute.return_value = (
+            _make_execute(data=[{"id": SUB_ID, "is_active": True, "token_expires_at": expires}])
+        )
+
+        sub = db.get_subscriber_by_manage_token(client, "manage-token")
+
+        assert sub is not None
+        assert sub["id"] == SUB_ID
+
+
+class TestMarkSubscriberLastSent:
+    def test_updates_last_sent_at(self):
+        client = _mock_client()
+        client.table.return_value.update.return_value.eq.return_value.eq.return_value.execute.return_value = (
+            _make_execute(data=[{"id": SUB_ID}])
+        )
+
+        ok = db.mark_subscriber_last_sent(client, SUB_ID, sent_at="2026-03-06T08:00:00+00:00")
+
+        assert ok is True
+        payload = client.table.return_value.update.call_args[0][0]
+        assert payload["last_sent_at"] == "2026-03-06T08:00:00+00:00"
+
+
+# ---------------------------------------------------------------------------
 # TestGDPRLifecycle — integration-style (patches internal db functions)
 # ---------------------------------------------------------------------------
 

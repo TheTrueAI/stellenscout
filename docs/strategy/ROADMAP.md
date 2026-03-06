@@ -44,14 +44,14 @@ Based on the current state (private repo, hosted on Streamlit Community Cloud) a
 - [x] **Make digest email prettier** — use HTML formatting, add Immermatch logo, style job listings for better readability
 
 ### 1.3 — UX Quick Wins
-- [ ] **Personalize the UI** — greet user by first name extracted from CV profile
-- [ ] **Add "Edit Profile" step** — let user tweak skills/roles/preferences before searching (this is already in Open Issues)
-- [ ] **Add a "Preferences" text input** — free-form like *"I want remote fintech jobs, no big corporations"* → append to profile prompt
+- [x] **Personalize the UI** — greet user by first name extracted from CV profile on results (`🎯 <first_name>'s Job Matches`)
+- [x] **Add "Edit Profile" step** — users can edit skills/roles/preferences before searching via profile edit mode
+- [x] **Add a "Preferences" text input** — free-form preferences are editable in profile and included in evaluator context
 - [x] **Show job age warning** — reliability badges (verified/aggregator/unverified) on job cards with tooltip; stale listings (>14 days) filtered out; `chips=date_posted:week` at API level
 - [ ] **Improve job cards** — show apply links more prominently, add company logos via Clearbit/Logo.dev
-- [ ] **Add digest preferences UI** — allow users to change `min_score` and cadence (daily/weekly) after subscription
+- [x] **Add digest preferences UI** — secure email-link flow lets subscribers update `min_score` and cadence (daily/weekly)
 - [ ] **Remove random jobs from homepage before CV is entered** — show a friendly welcome message instead of empty job cards
-- [ ] **Add filter/sort options for publishing date and score** — both in the digest email and on the homepage after search
+- [x] **Add filter/sort options for publishing date and score** — homepage supports date filter + score/date/title/company sort; digest emails are sorted by score
 
 ---
 

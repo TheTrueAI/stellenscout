@@ -195,6 +195,7 @@ class TestDailyTaskFullPipeline:
 
     @patch.dict("os.environ", {"APP_URL": "https://app.example.com"}, clear=False)
     @patch(f"{_PATCH_PREFIX}.issue_unsubscribe_token", return_value=True)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
     @patch(f"{_PATCH_PREFIX}.send_daily_digest")
     @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
     @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
@@ -221,6 +222,7 @@ class TestDailyTaskFullPipeline:
         mock_sent_ids: MagicMock,
         mock_log: MagicMock,
         mock_email: MagicMock,
+        mock_mark_last_sent: MagicMock,
         mock_unsub_token: MagicMock,
     ) -> None:
         from daily_task import main
@@ -250,9 +252,11 @@ class TestDailyTaskFullPipeline:
         email_jobs = email_args[0][1]  # second positional = jobs list
         assert len(email_jobs) == 1
         assert email_jobs[0]["score"] == 85
+        mock_mark_last_sent.assert_called_once_with(_mock_db.return_value, "sub-001")
 
     @patch.dict("os.environ", {"APP_URL": "https://app.example.com"}, clear=False)
     @patch(f"{_PATCH_PREFIX}.issue_unsubscribe_token", return_value=True)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
     @patch(f"{_PATCH_PREFIX}.send_daily_digest")
     @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
     @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
@@ -279,6 +283,7 @@ class TestDailyTaskFullPipeline:
         mock_sent_ids: MagicMock,
         mock_log: MagicMock,
         mock_email: MagicMock,
+        _mock_mark_last_sent: MagicMock,
         mock_unsub_token: MagicMock,
     ) -> None:
         """Both high and low score jobs should be logged to avoid re-evaluation."""
@@ -394,6 +399,60 @@ class TestDailyTaskNoGoodMatches:
         mock_email.assert_not_called()
         # But the job should still be logged
         mock_log.assert_called_once()
+
+
+class TestDailyTaskWeeklyCadence:
+    """Weekly subscribers whose last send was <7 days ago should be skipped."""
+
+    @patch.dict("os.environ", {"APP_URL": "https://app.example.com"}, clear=False)
+    @patch(f"{_PATCH_PREFIX}.issue_unsubscribe_token", return_value=True)
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest")
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_weekly_subscriber_skipped_if_recent(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        _mock_sent_ids: MagicMock,
+        _mock_log: MagicMock,
+        mock_email: MagicMock,
+        mock_unsub_token: MagicMock,
+    ) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        from daily_task import main
+
+        sub = _make_subscriber(sub_id="sub-weekly")
+        sub["cadence"] = "weekly"
+        # Last sent 2 days ago (less than 7)
+        sub["last_sent_at"] = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+
+        job = _make_job_listing()
+        mock_subs.return_value = [sub]
+        mock_search.return_value = [job]
+        mock_job_ids.return_value = {"https://example.com/job/1": "db-1"}
+        mock_eval.return_value = [_make_evaluated_job(job, score=90)]
+
+        main()
+
+        # Email should NOT be sent because weekly cadence was recently sent
+        mock_email.assert_not_called()
 
 
 class TestDailyTaskNoProfileJson:

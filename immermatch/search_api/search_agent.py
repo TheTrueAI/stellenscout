@@ -80,6 +80,7 @@ Return a JSON object with:
   - "duration_months": (int or null) Estimated duration in months. Calculate from dates; if dates are vague, estimate.
   - "skills_used": (list of strings) Key skills, tools, and technologies used in THIS specific role.
   - "description": (string) One-sentence summary of responsibilities/achievements.
+- "first_name": (string) The candidate's first name (given name only, not surname). Extract from the CV header or personal details section. Empty string if not found.
 - "education_history": Array of education objects. Each object has:
   - "degree": (string) e.g. "MSc Computer Science".
   - "institution": (string) University or school name.

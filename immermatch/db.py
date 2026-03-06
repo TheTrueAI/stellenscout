@@ -136,6 +136,19 @@ def get_subscriber_by_email(client: Client, email: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def get_subscriber_by_manage_token(client: Client, token: str) -> dict | None:
+    """Return an active subscriber row for a valid, unexpired manage token."""
+    rows = client.table("subscribers").select("*").eq("confirmation_token", token).eq("is_active", True).execute().data
+    if not rows:
+        return None
+
+    sub = rows[0]
+    exp_dt = _parse_iso_utc(sub.get("token_expires_at"))
+    if exp_dt and datetime.now(timezone.utc) > exp_dt:
+        return None
+    return sub
+
+
 def get_all_subscribers(client: Client) -> list[dict]:
     """Return all subscriber rows."""
     return client.table("subscribers").select("*").execute().data
@@ -170,6 +183,40 @@ def issue_unsubscribe_token(client: Client, subscriber_id: str, token: str, expi
             {
                 "unsubscribe_token": token,
                 "unsubscribe_token_expires_at": expires_at,
+            }
+        )
+        .eq("id", subscriber_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def issue_manage_token(client: Client, subscriber_id: str, token: str, expires_at: str) -> bool:
+    """Store a short-lived manage-preferences token for a subscriber."""
+    result = (
+        client.table("subscribers")
+        .update(
+            {
+                "confirmation_token": token,
+                "token_expires_at": expires_at,
+            }
+        )
+        .eq("id", subscriber_id)
+        .eq("is_active", True)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def clear_manage_token(client: Client, subscriber_id: str) -> bool:
+    """Clear any manage-preferences token for a subscriber."""
+    result = (
+        client.table("subscribers")
+        .update(
+            {
+                "confirmation_token": None,
+                "token_expires_at": None,
             }
         )
         .eq("id", subscriber_id)
@@ -358,6 +405,44 @@ def get_active_subscribers_with_profiles(client: Client) -> list[dict]:
         for r in rows
         if not r.get("expires_at") or _parse_iso_utc(r["expires_at"]) > datetime.now(timezone.utc)  # type: ignore[operator]
     ]
+
+
+def update_subscriber_preferences(
+    client: Client,
+    subscriber_id: str,
+    min_score: int,
+    cadence: str,
+) -> bool:
+    """Update a subscriber's digest preferences (min_score and cadence).
+
+    Args:
+        client: Supabase admin client.
+        subscriber_id: UUID of the subscriber.
+        min_score: Minimum match score for digest emails (0-100).
+        cadence: Delivery cadence — 'daily' or 'weekly'.
+
+    Returns:
+        True if a row was updated, False otherwise.
+    """
+    if cadence not in {"daily", "weekly"}:
+        raise ValueError("cadence must be either 'daily' or 'weekly'")
+
+    result = (
+        client.table("subscribers")
+        .update({"min_score": min_score, "cadence": cadence})
+        .eq("id", subscriber_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
+def mark_subscriber_last_sent(client: Client, subscriber_id: str, sent_at: str | None = None) -> bool:
+    """Set last_sent_at for an active subscriber after a successful digest send."""
+    ts = sent_at or datetime.now(timezone.utc).isoformat()
+    result = (
+        client.table("subscribers").update({"last_sent_at": ts}).eq("id", subscriber_id).eq("is_active", True).execute()
+    )
+    return bool(result.data)
 
 
 # ---------------------------------------------------------------------------

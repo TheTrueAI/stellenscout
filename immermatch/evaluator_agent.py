@@ -78,12 +78,14 @@ def evaluate_job(client: genai.Client, profile: CandidateProfile, job: JobListin
             lines.append(f"- {e.degree} @ {e.institution}{dates} [{e.status}]")
         education_history_section = "\n\n## Education History\n" + "\n".join(lines)
 
+    prefs_line = f"\n- **Preferences:** {profile.preferences}" if profile.preferences else ""
+
     user_prompt = f"""## Candidate Profile
 - **Skills:** {", ".join(profile.skills)}
 - **Experience:** {profile.experience_level} ({profile.years_of_experience} years)
 - **Target Roles:** {", ".join(profile.roles)}
 - **Languages:** {", ".join(profile.languages)}
-- **Domain Expertise:** {", ".join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}{work_history_section}{education_history_section}
+- **Domain Expertise:** {", ".join(profile.domain_expertise)}{edu_line}{certs_line}{summary_line}{prefs_line}{work_history_section}{education_history_section}
 
 ## Job Listing
 - **Title:** {job.title}

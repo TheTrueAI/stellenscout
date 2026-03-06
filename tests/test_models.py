@@ -119,6 +119,12 @@ class TestCandidateProfile:
         for entry in sample_profile.education_history:
             assert entry.status == "completed"
 
+    def test_first_name_from_fixture(self, sample_profile):
+        assert sample_profile.first_name == "Max"
+
+    def test_preferences_default_empty(self, sample_profile):
+        assert sample_profile.preferences == ""
+
     def test_defaults(self):
         p = CandidateProfile(
             skills=["Python"],
@@ -133,6 +139,8 @@ class TestCandidateProfile:
         assert p.summary == ""
         assert p.work_history == []
         assert p.education_history == []
+        assert p.first_name == ""
+        assert p.preferences == ""
 
     def test_backward_compat_no_history(self):
         """Old profiles without work_history/education_history still parse."""

@@ -9,6 +9,7 @@ from immermatch.emailer import (
     _build_job_row,
     _impressum_line,
     _safe_url,
+    send_manage_subscription_email,
     send_verification_email,
     send_welcome_email,
 )
@@ -119,6 +120,21 @@ class TestBuildHtml:
         assert "You're receiving this because you subscribed to Immermatch" in html
 
 
+class TestBuildHtmlSortOrder:
+    def test_jobs_sorted_by_score_descending(self):
+        jobs = [
+            {"title": "Low", "company": "Co", "score": 50, "url": "#"},
+            {"title": "High", "company": "Co", "score": 95, "url": "#"},
+            {"title": "Mid", "company": "Co", "score": 75, "url": "#"},
+        ]
+        html = _build_html(jobs)
+        # High-score job should appear before low-score job in the HTML
+        high_pos = html.index("High")
+        mid_pos = html.index("Mid")
+        low_pos = html.index("Low")
+        assert high_pos < mid_pos < low_pos
+
+
 class TestImpressumLine:
     def test_with_all_vars(self, monkeypatch):
         monkeypatch.setenv("IMPRESSUM_NAME", "Jane Doe")
@@ -215,3 +231,18 @@ class TestSendVerificationEmail:
         html = mock_send.call_args[0][0]["html"]
         assert "AI scores every job" in html
         assert "Daily digest" in html
+
+
+class TestSendManageSubscriptionEmail:
+    @patch("immermatch.emailer.resend.Emails.send", return_value={"id": "123"})
+    def test_manage_email_contains_manage_link(self, mock_send, monkeypatch):
+        monkeypatch.setenv("RESEND_API_KEY", "re_test")
+        send_manage_subscription_email("user@example.com", "https://app.test/?manage_token=xyz")
+        html = mock_send.call_args[0][0]["html"]
+        assert "Manage preferences" in html
+        assert "https://app.test/?manage_token=xyz" in html
+
+    def test_manage_email_raises_without_api_key(self, monkeypatch):
+        monkeypatch.delenv("RESEND_API_KEY", raising=False)
+        with pytest.raises(ValueError, match="RESEND_API_KEY"):
+            send_manage_subscription_email("user@example.com", "https://app.test/?manage_token=xyz")
