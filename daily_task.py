@@ -169,6 +169,16 @@ def main() -> int:
         sub_email = sub["email"]
         sub_id = sub["id"]
         sub_min_score = sub.get("min_score") or 70
+        sub_cadence = sub.get("cadence") or "daily"
+
+        # Skip weekly subscribers whose last send was less than 7 days ago
+        if sub_cadence == "weekly":
+            last_sent = sub.get("last_sent_at")
+            if last_sent:
+                last_sent_dt = datetime.fromisoformat(last_sent.replace("Z", "+00:00"))
+                if datetime.now(timezone.utc) - last_sent_dt < timedelta(days=7):
+                    log.info("  sub=%s — weekly cadence, last sent %s, skipping", sub_id, last_sent)
+                    continue
 
         # Reconstruct profile from stored JSON
         profile_data = sub.get("profile_json")

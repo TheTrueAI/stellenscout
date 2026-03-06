@@ -75,7 +75,8 @@ def _impressum_line() -> str:
 def _build_html(jobs: list[dict], unsubscribe_url: str = "", target_location: str = "") -> str:
     """Build a full HTML email body for the daily digest."""
     today = datetime.now(timezone.utc).strftime("%B %d, %Y")
-    rows = "\n".join(_build_job_row(j) for j in jobs)
+    sorted_jobs = sorted(jobs, key=lambda j: j.get("score") or 0, reverse=True)
+    rows = "\n".join(_build_job_row(j) for j in sorted_jobs)
     impressum = _impressum_line()
 
     safe_location = _esc(target_location)

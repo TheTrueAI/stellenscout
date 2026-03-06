@@ -519,6 +519,32 @@ class TestSaveSubscriptionContext:
 
 
 # ---------------------------------------------------------------------------
+# TestUpdateSubscriberPreferences
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateSubscriberPreferences:
+    def test_updates_preferences(self):
+        client = _mock_client()
+        client.table.return_value.update.return_value.eq.return_value.execute.return_value = _make_execute(
+            data=[{"id": SUB_ID}]
+        )
+
+        result = db.update_subscriber_preferences(client, SUB_ID, min_score=80, cadence="weekly")
+
+        assert result is True
+        payload = client.table.return_value.update.call_args[0][0]
+        assert payload["min_score"] == 80
+        assert payload["cadence"] == "weekly"
+
+    def test_returns_false_on_no_match(self):
+        client = _mock_client()
+        client.table.return_value.update.return_value.eq.return_value.execute.return_value = _make_execute(data=[])
+
+        assert db.update_subscriber_preferences(client, SUB_ID, min_score=70, cadence="daily") is False
+
+
+# ---------------------------------------------------------------------------
 # TestGDPRLifecycle — integration-style (patches internal db functions)
 # ---------------------------------------------------------------------------
 

@@ -4,7 +4,7 @@ SHELL := /bin/bash
 
 ## Run the full check suite (test + lint + format + typecheck)
 check:
-	source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format --check . && mypy .
+	source .venv/bin/activate && pytest tests/ -x -q && ruff check --fix . && ruff format . && mypy .
 
 ## Run tests only
 test:

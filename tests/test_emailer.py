@@ -119,6 +119,21 @@ class TestBuildHtml:
         assert "You're receiving this because you subscribed to Immermatch" in html
 
 
+class TestBuildHtmlSortOrder:
+    def test_jobs_sorted_by_score_descending(self):
+        jobs = [
+            {"title": "Low", "company": "Co", "score": 50, "url": "#"},
+            {"title": "High", "company": "Co", "score": 95, "url": "#"},
+            {"title": "Mid", "company": "Co", "score": 75, "url": "#"},
+        ]
+        html = _build_html(jobs)
+        # High-score job should appear before low-score job in the HTML
+        high_pos = html.index("High")
+        mid_pos = html.index("Mid")
+        low_pos = html.index("Low")
+        assert high_pos < mid_pos < low_pos
+
+
 class TestImpressumLine:
     def test_with_all_vars(self, monkeypatch):
         monkeypatch.setenv("IMPRESSUM_NAME", "Jane Doe")

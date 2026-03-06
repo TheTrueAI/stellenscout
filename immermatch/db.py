@@ -360,6 +360,32 @@ def get_active_subscribers_with_profiles(client: Client) -> list[dict]:
     ]
 
 
+def update_subscriber_preferences(
+    client: Client,
+    subscriber_id: str,
+    min_score: int,
+    cadence: str,
+) -> bool:
+    """Update a subscriber's digest preferences (min_score and cadence).
+
+    Args:
+        client: Supabase admin client.
+        subscriber_id: UUID of the subscriber.
+        min_score: Minimum match score for digest emails (0-100).
+        cadence: Delivery cadence — 'daily' or 'weekly'.
+
+    Returns:
+        True if a row was updated, False otherwise.
+    """
+    result = (
+        client.table("subscribers")
+        .update({"min_score": min_score, "cadence": cadence})
+        .eq("id", subscriber_id)
+        .execute()
+    )
+    return bool(result.data)
+
+
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------

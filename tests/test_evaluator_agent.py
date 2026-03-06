@@ -95,6 +95,27 @@ class TestEvaluateJob:
         assert result.score == 50
         assert "unexpected" in result.reasoning
 
+    @patch("immermatch.evaluator_agent.parse_json")
+    @patch("immermatch.evaluator_agent.call_gemini")
+    def test_preferences_included_in_prompt(self, mock_call: MagicMock, mock_parse: MagicMock, mock_client, simple_job):
+        profile = CandidateProfile(
+            skills=["Python"],
+            experience_level="Mid",
+            years_of_experience=3,
+            roles=["Backend Developer"],
+            languages=["English Native"],
+            domain_expertise=["SaaS"],
+            preferences="remote only, no startups",
+        )
+        mock_call.return_value = '{"score": 70, "reasoning": "OK", "missing_skills": []}'
+        mock_parse.return_value = {"score": 70, "reasoning": "OK", "missing_skills": []}
+
+        evaluate_job(mock_client, profile, simple_job)
+
+        prompt = mock_call.call_args[0][1]
+        assert "remote only, no startups" in prompt
+        assert "**Preferences:**" in prompt
+
 
 class TestEvaluateAllJobs:
     """Tests for evaluate_all_jobs() — mock evaluate_job."""

@@ -12,7 +12,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import streamlit as st
@@ -228,6 +228,7 @@ _DEFAULTS = {
     "last_run_time": 0.0,
     "run_requested": False,
     "location": "",
+    "profile_edit_enabled": False,
     "_cv_consent_given": False,
 }
 for k, v in _DEFAULTS.items():
@@ -351,6 +352,27 @@ def _render_profile(profile: CandidateProfile) -> None:
     st.markdown("**Skills:** " + " · ".join(f"`{s}`" for s in profile.skills))
 
 
+def _render_profile_editable(profile: CandidateProfile) -> tuple[str, str, str]:
+    """Render editable profile fields and return (skills, roles, prefs) text."""
+    st.markdown("**Enter further details** (optional)")
+    edit_skills = st.text_area(
+        "Skills (comma-separated)",
+        value=", ".join(profile.skills),
+        height=68,
+    )
+    edit_roles = st.text_area(
+        "Target roles (comma-separated)",
+        placeholder=f"e.g. {', '.join(profile.roles)}",
+        height=68,
+    )
+    edit_prefs = st.text_area(
+        "Preferences",
+        placeholder="e.g. remote only, no startups, prefer 4-day week...",
+        height=68,
+    )
+    return edit_skills, edit_roles, edit_prefs
+
+
 # ---------------------------------------------------------------------------
 # Helper: score helpers
 # ---------------------------------------------------------------------------
@@ -372,6 +394,34 @@ _RELIABILITY_INFO: dict[str, tuple[str, str, str]] = {
         "Source could not be verified — apply with caution",
     ),
 }
+
+
+def _parse_relative_date(posted_at: str) -> datetime | None:
+    """Parse relative date strings like '2 days ago' into a datetime.
+
+    Returns None if the string cannot be parsed.
+    """
+    if not posted_at:
+        return None
+    posted_lower = posted_at.strip().lower()
+    now = datetime.now(timezone.utc)
+    if posted_lower in ("just now", "today", "just posted"):
+        return now
+    match = re.match(r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago", posted_lower)
+    if not match:
+        return None
+    value = int(match.group(1))
+    unit = match.group(2)
+    unit_map = {
+        "second": timedelta(seconds=1),
+        "minute": timedelta(minutes=1),
+        "hour": timedelta(hours=1),
+        "day": timedelta(days=1),
+        "week": timedelta(weeks=1),
+        "month": timedelta(days=30),
+        "year": timedelta(days=365),
+    }
+    return now - unit_map[unit] * value
 
 
 def _score_emoji(score: int) -> str:
@@ -635,28 +685,21 @@ if not has_cv:
         )
         st.caption("Your CV is processed securely via AI. See our [Privacy Policy](/privacy) for details.")
 
-    # Recent DB jobs below
-    try:
-        from immermatch.db import get_admin_client as _get_db_browse
-        from immermatch.db import get_all_jobs
-
-        _db_browse = _get_db_browse()
-        _saved_jobs = get_all_jobs(_db_browse)
-        if _saved_jobs:
-            st.divider()
-            st.subheader("📋 Recent Jobs from Database")
-            for _sj in _saved_jobs[:25]:
-                with st.container(border=True):
-                    _left, _right = st.columns([4, 1])
-                    with _left:
-                        st.markdown(f"**{_sj['title']}** @ {_sj['company']}")
-                        if _sj.get("score"):
-                            st.caption(f"Score: {_sj['score']}/100")
-                    with _right:
-                        if _sj.get("url"):
-                            st.link_button("View ↗", _sj["url"], use_container_width=True)
-    except Exception:
-        logger.debug("Recent jobs unavailable", exc_info=True)
+    # How it works section
+    st.divider()
+    st.subheader("How it works")
+    _hw1, _hw2, _hw3 = st.columns(3)
+    with _hw1:
+        st.markdown("**1. Upload your CV**")
+        st.caption(
+            "Upload your CV in PDF, DOCX, or text format. Our AI extracts your skills, experience, and preferences."
+        )
+    with _hw2:
+        st.markdown("**2. Choose your location**")
+        st.caption("Tell us where you want to work. We search multiple job sources for openings in your area.")
+    with _hw3:
+        st.markdown("**3. Get matched jobs**")
+        st.caption("AI scores every job against your profile and shows the best matches with apply links.")
 else:
     hero_uploaded_file = None
 
@@ -666,6 +709,11 @@ else:
 
         col_pad_l, col_center, col_pad_r = st.columns([1, 2, 1])
         with col_center:
+            _profile = st.session_state.profile
+            _edit_skills = ""
+            _edit_roles = ""
+            _edit_prefs = ""
+
             with st.form("search_form"):
                 location = st.text_input(
                     "Where do you want to work?",
@@ -673,17 +721,55 @@ else:
                     placeholder="e.g. Munich, Berlin, Hamburg...",
                     help="Currently searches German job listings via Bundesagentur für Arbeit.",
                 )
+
                 run_button = st.form_submit_button(
                     "🚀 Find Jobs",
                     use_container_width=True,
                     type="primary",
                 )
+
             location = location.strip()[:100]
 
-        # Profile in collapsed expander
-        if st.session_state.profile is not None:
+        if _profile is not None:
             with st.expander("Your AI Profile", expanded=True, icon="📋"):
-                _render_profile(st.session_state.profile)
+                if not st.session_state.profile_edit_enabled:
+                    _render_profile(_profile)
+
+                    if st.button(
+                        "✏️ Edit profile",
+                        key="enable_profile_edit_btn",
+                        type="secondary",
+                    ):
+                        st.session_state.profile_edit_enabled = True
+                        st.rerun()
+
+                else:
+                    _edit_skills, _edit_roles, _edit_prefs = _render_profile_editable(_profile)
+
+                    if st.button(
+                        "💾 Save profile changes",
+                        key="save_profile_btn",
+                        type="primary",
+                    ):
+                        st.session_state.profile_edit_enabled = False
+                        st.rerun()
+
+        if run_button and _profile is not None and st.session_state.profile_edit_enabled:
+            _new_skills = [s.strip() for s in (_edit_skills or "").split(",") if s.strip()]
+            _new_roles = [r.strip() for r in (_edit_roles or "").split(",") if r.strip()]
+            _prefs_str = (_edit_prefs or "").strip()
+            _changed = (
+                _new_skills != _profile.skills or _new_roles != _profile.roles or _prefs_str != _profile.preferences
+            )
+            st.session_state.profile = _profile.model_copy(
+                update={
+                    "skills": _new_skills or _profile.skills,
+                    "roles": _new_roles or _profile.roles,
+                    "preferences": _prefs_str,
+                }
+            )
+            if _changed:
+                st.session_state.queries = None  # invalidate cached queries
     else:
         # ===== Phase C: Results ready ========================================
         _render_step_indicator(4)  # all done
@@ -723,6 +809,7 @@ if uploaded_file is not None:
         st.session_state.profile = None
         st.session_state.queries = None
         st.session_state.evaluated_jobs = None
+        st.session_state.profile_edit_enabled = False
         st.session_state.summary = None
         st.session_state.summary_error = None
         prev_future = st.session_state.get("summary_future")
@@ -1016,13 +1103,14 @@ if st.session_state.evaluated_jobs is not None:
             _render_profile(st.session_state.profile)
 
     st.divider()
-    st.subheader("🎯 Job Matches")
+    _greeting_name = getattr(st.session_state.profile, "first_name", "") if st.session_state.profile else ""
+    st.subheader(f"🎯 {_greeting_name}'s Job Matches" if _greeting_name else "🎯 Job Matches")
 
     # -- Filter controls ---------------------------------------------------
     all_companies = sorted({ej.job.company_name for ej in evaluated_jobs})
     all_locations = sorted({ej.job.location for ej in evaluated_jobs})
 
-    fcol1, fcol2, fcol3 = st.columns([2, 2, 1])
+    fcol1, fcol2, fcol3, fcol4 = st.columns([2, 2, 1, 1])
 
     with fcol1:
         selected_companies = st.multiselect(
@@ -1041,25 +1129,51 @@ if st.session_state.evaluated_jobs is not None:
         )
 
     with fcol3:
+        date_filter = st.selectbox(
+            "Published within",
+            options=["Any", "Last 24h", "Last 7 days"],
+            index=0,
+        )
+
+    with fcol4:
         sort_option = st.selectbox(
             "Sort by",
-            options=["Score ↓", "Score ↑", "Title A–Z", "Company A–Z"],
+            options=["Score ↓", "Score ↑", "Date (newest)", "Date (oldest)", "Title A–Z", "Company A–Z"],
             index=0,
         )
 
     # -- Apply filters -----------------------------------------------------
+    _date_cutoff = None
+    _now = datetime.now(timezone.utc)
+    if date_filter == "Last 24h":
+        _date_cutoff = _now - timedelta(hours=24)
+    elif date_filter == "Last 7 days":
+        _date_cutoff = _now - timedelta(days=7)
+
+    # Pre-compute parsed dates once to avoid redundant parsing during filter+sort
+    _parsed_dates: dict[str, datetime | None] = {}
+    for _ej in evaluated_jobs:
+        _pa = _ej.job.posted_at
+        if _pa not in _parsed_dates:
+            _parsed_dates[_pa] = _parse_relative_date(_pa)
+
     filtered = [
         ej
         for ej in evaluated_jobs
         if ej.evaluation.score >= min_score
         and (not selected_companies or ej.job.company_name in selected_companies)
         and (not selected_locations or ej.job.location in selected_locations)
+        and (_date_cutoff is None or (_parsed_dates[ej.job.posted_at] or _now) >= _date_cutoff)
     ]
 
     # -- Apply sorting -----------------------------------------------------
-    sort_key_map = {
+    _epoch = datetime.min.replace(tzinfo=timezone.utc)
+
+    sort_key_map: dict[str, tuple] = {
         "Score ↓": (lambda ej: ej.evaluation.score, True),
         "Score ↑": (lambda ej: ej.evaluation.score, False),
+        "Date (newest)": (lambda ej: _parsed_dates[ej.job.posted_at] or _epoch, True),
+        "Date (oldest)": (lambda ej: _parsed_dates[ej.job.posted_at] or _epoch, False),
         "Title A–Z": (lambda ej: ej.job.title.lower(), False),
         "Company A–Z": (lambda ej: ej.job.company_name.lower(), False),
     }
@@ -1235,3 +1349,72 @@ if st.session_state.evaluated_jobs is not None:
             except Exception:
                 logger.exception("Subscription error")
                 st.error("Could not subscribe. Please try again later.")
+
+    # -- Manage Subscription -----------------------------------------------
+    with st.expander("Manage Subscription", expanded=False):
+        with st.form("manage_sub_lookup_form"):
+            _manage_email = st.text_input(
+                "Your email",
+                placeholder="Enter your subscribed email",
+                key="manage_sub_email",
+            )
+            _lookup_btn = st.form_submit_button("Look up subscription")
+
+        if _lookup_btn and _manage_email:
+            try:
+                from immermatch.db import get_admin_client as _get_manage_db
+                from immermatch.db import get_subscriber_by_email as _get_sub_by_email
+
+                _manage_db = _get_manage_db()
+                _manage_sub = _get_sub_by_email(_manage_db, _manage_email.strip())
+                if _manage_sub and _manage_sub.get("is_active"):
+                    st.session_state["_manage_sub_data"] = _manage_sub
+                elif _manage_sub:
+                    st.info("This subscription is not active.")
+                    st.session_state.pop("_manage_sub_data", None)
+                else:
+                    st.info("No subscription found for this email.")
+                    st.session_state.pop("_manage_sub_data", None)
+            except Exception:
+                logger.exception("Manage subscription error")
+                st.error("Could not load subscription. Please try again later.")
+
+        _manage_sub = st.session_state.get("_manage_sub_data")
+        if _manage_sub:
+            _current_min = _manage_sub.get("min_score") or 70
+            _current_cadence = _manage_sub.get("cadence") or "daily"
+
+            with st.form("manage_sub_form"):
+                _pref_score = st.slider(
+                    "Minimum match score",
+                    min_value=0,
+                    max_value=100,
+                    value=_current_min,
+                    step=5,
+                    help="Only jobs scoring at or above this threshold will be emailed to you.",
+                )
+                _pref_cadence = st.radio(
+                    "Delivery cadence",
+                    options=["daily", "weekly"],
+                    index=0 if _current_cadence == "daily" else 1,
+                    horizontal=True,
+                )
+                _save_prefs = st.form_submit_button("Save preferences")
+                if _save_prefs:
+                    try:
+                        from immermatch.db import get_admin_client as _get_manage_db2
+                        from immermatch.db import update_subscriber_preferences as _update_prefs
+
+                        _ok = _update_prefs(
+                            _get_manage_db2(),
+                            _manage_sub["id"],
+                            min_score=_pref_score,
+                            cadence=_pref_cadence,
+                        )
+                        if _ok:
+                            st.success("Preferences saved.")
+                        else:
+                            st.error("Could not save preferences. Please try again.")
+                    except Exception:
+                        logger.exception("Manage subscription save error")
+                        st.error("Could not save preferences. Please try again later.")
