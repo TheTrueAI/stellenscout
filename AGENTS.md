@@ -327,6 +327,8 @@ class EvaluatedJob(BaseModel):
 
 ## 7. Caching (`cache.py`)
 
+> **Planned change (R12):** Replace file-based cache with DB-backed storage for multi-instance deploys and per-user isolation. New backend will sit behind the existing `ResultCache` interface. See `docs/strategy/ROADMAP.md` R12.
+
 All pipeline results are cached to JSON in `.immermatch_cache/` to minimize API usage across runs.
 
 ```
@@ -346,6 +348,8 @@ All pipeline results are cached to JSON in `.immermatch_cache/` to minimize API 
 ---
 
 ## 8. Streamlit Web UI (`app.py`)
+
+> **Planned change (R11):** Extract shared pipeline logic into `immermatch/pipeline.py` (`PipelineService`). `app.py` will keep only UI concerns; `daily_task.py` will share the same orchestration code. Target: `app.py` under 500 lines. See `docs/strategy/ROADMAP.md` R11.
 
 Three-phase UI flow:
 - **Phase A (Landing):** Hero section, CV consent checkbox, file uploader, recent DB jobs
@@ -401,6 +405,9 @@ Supported formats:
 - Expired subscriber rows are purged after 7 days via `db.purge_inactive_subscribers()`
 
 ### Unsubscribe Flow
+
+> **Planned change (R6):** Unsubscribe will hard-delete the subscriber row entirely (not just set `is_active=false`), aligning behavior with user-facing legal text. See `docs/strategy/ROADMAP.md` R6.
+
 - Each daily digest email includes a `List-Unsubscribe` header and footer link
 - `daily_task.py` generates a one-time `unsubscribe_token` (30-day expiry) per subscriber per run via `db.issue_unsubscribe_token()`
 - `pages/unsubscribe.py` validates the token and calls `db.deactivate_subscriber_by_token()` which also calls `db.delete_subscriber_data()` to immediately wipe PII
@@ -455,6 +462,9 @@ RLS is enabled on all tables. Explicit policies enforce defense-in-depth:
 ### Tables
 
 ```sql
+-- Planned change (R8): Add dedicated manage_token + manage_token_expires_at columns
+-- to prevent manage-link generation from overwriting DOI confirmation tokens.
+-- See docs/strategy/ROADMAP.md R8.
 subscribers (
     id UUID PK,
     email TEXT UNIQUE,

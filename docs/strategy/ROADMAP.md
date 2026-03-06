@@ -1,135 +1,226 @@
-# Immermatch — Next Steps Roadmap
+# Immermatch — Strategy Roadmap (March 2026 Refresh)
 
-Based on the current state (private repo, hosted on Streamlit Community Cloud) and the goals outlined in AGENTS.md, here's a prioritized plan:
-
----
-
-## Phase 0: Pre-Launch Hardening (Do Before Going Public)
-
-### 0.1 — Testing & CI
-- [x] **Write unit tests** for core modules: `llm.py`, `cache.py`, `cv_parser.py`, `db.py`, `search_agent.py`, `evaluator_agent.py` (mock API calls) — 146 tests across 9 test files
-- [x] **Write integration tests** for the full pipeline (profile → queries → search → evaluate → summary) using fixture CVs — 11 tests in `tests/test_integration.py` with tech + sustainability CV fixtures
-- [x] **Set up GitHub Actions CI** — run `pytest` on every push/PR, lint with `ruff`
-- [x] **Add type checking** — run `mypy` in CI (Pydantic models already help here)
-
-### 0.2 — Security Audit
-- [x] **Audit secrets handling** — raw exceptions no longer leak in `st.error()` calls; all user-facing errors are generic with server-side `logger.exception()`; subscriber emails redacted from `daily_task.py` logs (replaced with subscriber UUID)
-- [x] **Review Supabase RLS policies** — 6 explicit policies applied: anon key denied on `subscribers` and `job_sent_logs`; `jobs` allows anon SELECT only; Supabase security advisor shows zero warnings
-- [x] **Rate-limit hardening** — added IP-based rate limiting (module-level dict in `app.py`) alongside the existing 30-second session cooldown; extracts client IP from `X-Forwarded-For`; stale entries cleaned after 5 minutes
-- [x] **Input sanitization** — PDF page limit (50 pages), DOCX paragraph limit (2000), email format regex validation before `add_subscriber()`; existing guards retained (5 MB file limit, extension whitelist, 50K char truncation)
-
-### 0.3 — GDPR Compliance Checklist
-- [x] **Verify data deletion works end-to-end** — test expiry, unsubscribe, and purge flows (38 tests in `tests/test_db.py`)
-- [x] **Finalize privacy policy** (`pages/privacy.py`) — make it legally accurate for your jurisdiction
-- [x] **Finalize impressum** (`pages/impressum.py`) — required by German law (§ 5 DDG)
-- [x] **Cookie banner** — not required: only Streamlit's technically necessary session cookies (exempt under ePrivacy Art. 5(3)); `gatherUsageStats = false`; no analytics/tracking
+This roadmap replaces the old launch-phase plan and reflects current reality:
+- The product is already public.
+- Main risk is **relevance + trust** (wrong location behavior, stale/weak links, confusing UX transitions).
+- Growth is currently constrained more by product quality and conversion friction than by missing monetization.
 
 ---
 
-## Phase 1: Public Launch (Free)
+## 1) Current Priority Lens (Impact First)
 
-### 1.1 — Open Source the Repo
-- [x] **Add LICENSE file** (AGPL-3.0) to repo root
-- [x] **Write README.md** — hero screenshot, what it does, self-hosting instructions (`GOOGLE_API_KEY`, `SERPAPI_KEY`, `SUPABASE_*`, `RESEND_*`), link to live demo
-- [x] **Write CONTRIBUTING.md** — how to set up local dev, PR process, code style
-- [x] **Create GitHub issue templates** — bug report, feature request, question
-- [x] **Flip repo to public**
-
-### 1.2 — Deploy Daily Digest
-- [x] **Set up GitHub Actions cron job** for daily_task.py (e.g., `cron: '0 7 * * *'` UTC)
-- [x] **Add secrets to GitHub Actions** — all required env vars from §10
-- [x] **Test the full digest cycle** — subscribe, verify, receive digest, unsubscribe
-- [x] **Create a welcome email after successful subscription** — explain what to expect, how to contact support, link to privacy policy, show some example matches
-- [x] **Add unsubscribe link to digest emails** — include unique tokenized URL to securely identify subscriber without exposing email
-- [x] **Make digest email prettier** — use HTML formatting, add Immermatch logo, style job listings for better readability
-
-### 1.3 — UX Quick Wins
-- [x] **Personalize the UI** — greet user by first name extracted from CV profile on results (`🎯 <first_name>'s Job Matches`)
-- [x] **Add "Edit Profile" step** — users can edit skills/roles/preferences before searching via profile edit mode
-- [x] **Add a "Preferences" text input** — free-form preferences are editable in profile and included in evaluator context
-- [x] **Show job age warning** — reliability badges (verified/aggregator/unverified) on job cards with tooltip; stale listings (>14 days) filtered out; `chips=date_posted:week` at API level
-- [ ] **Improve job cards** — show apply links more prominently, add company logos via Clearbit/Logo.dev
-- [x] **Add digest preferences UI** — secure email-link flow lets subscribers update `min_score` and cadence (daily/weekly)
-- [ ] **Remove random jobs from homepage before CV is entered** — show a friendly welcome message instead of empty job cards
-- [x] **Add filter/sort options for publishing date and score** — homepage supports date filter + score/date/title/company sort; digest emails are sorted by score
+1. **Search relevance and location consistency**
+2. **UX clarity during pipeline transitions**
+3. **Digest reliability and subscription data lifecycle**
+4. **Growth instrumentation and acquisition loops**
+5. **Monetization readiness (de-prioritized until usage signal improves)**
 
 ---
 
-## Phase 2: Monetization (Paid Newsletter)
+## 2) Impact × Effort Triage (Active Problems)
 
-### 2.1 — Stripe Integration
-- [ ] **Create Stripe product** — monthly subscription (€5–9/month)
-- [ ] **Add Stripe Checkout flow** — after DOI confirmation, redirect to payment
-- [ ] **Store subscription status in DB** — add `stripe_customer_id`, `stripe_subscription_id`, `payment_status` columns to `subscribers`
-- [ ] **Stripe webhook handler** — handle `invoice.paid`, `customer.subscription.deleted`, `invoice.payment_failed`
-- [ ] **Gate daily digest** behind active payment — free tier gets one-time search only
-
-### 2.2 — Free vs Paid Tiers
-| Feature | Free | Paid (€5-9/mo) |
-|---|---|---|
-| One-time job search | ✅ | ✅ |
-| Daily digest email | ❌ | ✅ |
-| Results per search | 20 jobs | 50 jobs |
-| Score threshold | Fixed 70 | Configurable |
-| Query editing | ❌ | ✅ |
-
-### 2.3 — Migrate Off Streamlit Community Cloud
-- [ ] **Move to a VPS or PaaS** — Railway, Fly.io, or Hetzner (Streamlit Cloud has no custom domain, no Stripe webhooks, limited control)
-- [ ] **Custom domain** — e.g., `immermatch.de` or `immermatch.eu`
-- [ ] **Reverse proxy** — Caddy or nginx with automatic HTTPS
-- [ ] **Docker Compose setup** — `app`, `daily-task` (cron), `postgres` (or keep Supabase)
+| ID | Problem | Impact | Effort | Decision |
+|---|---|---|---|---|
+| R1 | Sidebar location updates too late; transition feels unclear while CV extraction is still running | High | Medium | **Do now** |
+| R2 | `Cologne` vs `Köln`, `Munich` vs `München` produce different outcomes | High | Medium | **Do now** |
+| R3 | `✅ Queries generated` expander appears empty during search | Medium | Small | **Do now** |
+| R4 | Jobs appear mixed across city searches (homepage symptom) | High | Medium | **Do now** |
+| R5 | BA listings include useless homepage links (`https://www.arbeitsagentur.de/`) | High | Medium | **Do now** |
+| R6 | Unsubscribe should hard-delete subscriber record, not only set `is_active=false` | High | Medium | **Do now** |
+| R7 | Digest reliability gap: avoid wrong-city jobs and mark-as-sent only after successful send | High | Medium | **Do now** |
+| R8 | Confirmation token and manage-token collision in DB schema | High | Medium | **Do now** |
+| R9 | Low user count; no privacy-safe funnel instrumentation for actionable growth work | High | Medium | **Do next** |
+| R10 | GitHub issues and milestones are stale vs real priorities | High | Small | **Do now** |
+| R11 | `app.py` is a 1,500-line god file; pipeline logic duplicated between `app.py` and `daily_task.py` | High | Large | **Do now** |
+| R12 | File-based `ResultCache` breaks on multi-instance deploys, leaks across users sharing same CV hash | Medium | Medium | **Do next** |
 
 ---
 
-## Phase 3: Growth & Scale
+## 3) Execution Plan (Next 4 Weeks, Step-by-Step)
 
-### 3.1 — Search Provider Expansion
-- [x] **Switch to Bundesagentur für Arbeit API** — free, verified German job listings; eliminates SerpAPI cost for German market
-- [x] **Implement SearchProvider abstraction** — pluggable protocol for multiple job-search backends
-- [x] **Extract SerpApiProvider** — retained for future non-German markets behind the SearchProvider interface
-- [ ] **Add per-country provider routing** — auto-select provider based on target location (e.g., BA for Germany, SerpApi for others)
-- [ ] **Evaluate additional country-specific APIs** — VDAB (Belgium), Pôle Emploi (France), etc.
-- [ ] **Implement provider fallback strategy** — graceful degradation when a provider is down
+### Week 1 — Relevance + UX Friction Removal
 
-### 3.2 — Stale Job Detection (Open Issue)
-- [x] **HEAD request validation** — concurrent HEAD requests check apply URLs for dead links (404/410/403) and redirect-to-homepage patterns (`link_validator.py`)
-- [x] **Reliability badges** — `verified`/`aggregator`/`unverified` classification with coloured UI badges and tooltips
-- [x] **Blocked portal externalization** — domain blocklist moved to `blocked_portals.txt` with feedback tooling (`scripts/label_reliability.py`, `scripts/analyze_labels.py`)
-- [x] **Temporal freshness** — `chips=date_posted:week` at API level + `_is_stale()` defense-in-depth for >14-day listings
-- [ ] **Track job first-seen date in DB** — auto-expire jobs older than 45 days
-- [ ] **User feedback loop** — "This job no longer exists" button → mark as expired in DB
-- [ ] **Add portal quality scoring** — down-rank sources with high dead-link rates and low apply success
+#### R1 — Sidebar location synchronization + transition clarity (#67)
+- [ ] **Step 1:** Document current UI state machine for `location` input (idle, extracting CV, ready, submitted, searching).
+- [ ] **Step 2:** Define one canonical source-of-truth session key for location state and submission state.
+- [ ] **Step 3:** Disable location input and submit CTA immediately after submit event is accepted.
+- [ ] **Step 4:** Update CTA labels/spinner text per phase (extracting, generating queries, searching, evaluating).
+- [ ] **Step 5:** Add UI test that verifies disabled state and label transitions.
+- [ ] **Done when:** No ambiguous editable state remains after submit, and transition labels match actual pipeline phase.
 
-### 3.3 — Multi-CV Support (Open Issue)
-- [ ] **Allow multiple profiles per subscriber** — each with its own search queries and evaluation criteria
-- [ ] **Separate digest sections** — "Software Engineering matches" vs "Data Science matches"
+#### R3 — Query expander visibility during active search (#68)
+- [ ] **Step 1:** Identify where generated queries are first available in session state.
+- [ ] **Step 2:** Persist query list immediately when generated (before downstream pipeline completes).
+- [ ] **Step 3:** Render persisted query list in expander during active search/evaluation.
+- [ ] **Step 4:** Keep list visible on reruns unless a new search run explicitly resets it.
+- [ ] **Step 5:** Add UI regression test for non-empty expander during active run.
+- [ ] **Done when:** `✅ Queries generated` always shows generated queries as soon as they exist.
 
-### 3.4 — Search & Evaluation Pipeline Efficiency (Open Issue)
-- [ ] **Prototype streaming evaluation** — evaluate jobs incrementally while parsing search results
-- [ ] **Benchmark architecture variants** — compare (search→batch-eval) vs (search+stream-eval) for latency/cost/quality
-- [ ] **Gate LLM evaluations with cheap heuristics** — skip obvious mismatches before Gemini scoring
-- [ ] **Add A/B quality checks** — ensure optimization changes don’t reduce top-match relevance
+#### R4 — Wrong-city carryover on consecutive searches (#70)
+- [ ] **Step 1:** Reproduce with deterministic sequence (Munich → Berlin, Köln → München, etc.) and record expected/actual.
+- [ ] **Step 2:** Trace city-specific state through cache keying, session state, and rendering pipeline.
+- [ ] **Step 3:** Ensure city-scoped result containers are reset or replaced on location change.
+- [ ] **Step 4:** Validate that UI cards use current run output only, not stale prior-run fragments.
+- [ ] **Step 5:** Add regression test for two consecutive city searches in one session.
+- [ ] **Done when:** Second search only shows jobs from second city according to configured location policy.
 
-### 3.5 — Community & Marketing
-- [ ] **Write a launch blog post** — "I built an AI job hunter with Gemini" for Hacker News / Reddit / Dev.to
-- [ ] **Record a 2-minute demo video** for the README
-- [ ] **Post on LinkedIn** — target the German tech community
-- [ ] **Submit to Product Hunt** once paid tier is live
+#### R2 — Canonical location aliases (#66)
+- [ ] **Step 1:** Define normalization table for priority aliases (`Köln/Cologne`, `München/Munich`).
+- [ ] **Step 2:** Normalize at input boundary (before query generation/provider selection).
+- [ ] **Step 3:** Ensure normalized value is used consistently in cache keys, provider calls, and logs.
+- [ ] **Step 4:** Add tests for alias equivalence and cache-key consistency.
+- [ ] **Step 5:** Add short note in docs describing normalization behavior.
+- [ ] **Done when:** Alias pairs produce equivalent behavior and deterministic cache reuse.
 
-### 3.6 — Reliability & Abuse Protection (Potential Risks)
-- [ ] **Add idempotency keys for pipeline runs** — prevent duplicate digests/emails on retries
-- [ ] **Add anti-abuse controls** — basic bot detection and per-email/IP throttling around upload/subscribe endpoints
-- [ ] **Set SLOs + runbooks** — define uptime/error budgets and incident response steps for digest failures
+### Week 2 — Link Quality + Subscription Lifecycle Correctness
+
+#### R5 — BA homepage-link filtering (#40)
+- [ ] **Step 1:** Define rules for non-actionable links (homepage-only, generic landing redirects).
+- [ ] **Step 2:** Apply filtering in BA parsing/link-validation path before UI rendering.
+- [ ] **Step 3:** Preserve valid alternative links when one option is filtered.
+- [ ] **Step 4:** Add test fixtures with mixed valid + homepage links.
+- [ ] **Step 5:** Add metric/log counter for filtered BA links (non-PII).
+- [ ] **Done when:** No BA job card shows `https://www.arbeitsagentur.de/` as an apply option.
+
+#### R6 — Unsubscribe hard-delete policy (#69)
+- [ ] **Step 1:** Confirm DB referential path for deleting subscriber row safely.
+- [ ] **Step 2:** Implement hard-delete on unsubscribe endpoint/service path.
+- [ ] **Step 3:** Update privacy/unsubscribe copy so behavior and text are identical.
+- [ ] **Step 4:** Add tests for successful hard-delete and missing-token/error behavior.
+- [ ] **Step 5:** Verify no personal fields remain after unsubscribe flow completion.
+- [ ] **Done when:** Unsubscribe removes subscriber row and aligns with user-facing legal text.
+
+#### R7 — Digest correctness and send/log integrity (#44)
+- [ ] **Step 1:** Define correct operation order: candidate selection → send → log sent.
+- [ ] **Step 2:** Guard against logging jobs as sent if email delivery fails.
+- [ ] **Step 3:** Enforce subscriber-location relevance filter before evaluation/send stage.
+- [ ] **Step 4:** Add retry/idempotency guard for digest run duplication risk.
+- [ ] **Step 5:** Add tests for send-failure path, retry path, and location relevance.
+- [ ] **Done when:** No send/log mismatch and no wrong-location digest entries in tested scenarios.
+
+### Week 3 — Reliability Debt and Architecture Safety
+
+#### R8 — Token split for DOI vs manage links (#71)
+- [ ] **Step 1:** Add dedicated `manage_token` and `manage_token_expires_at` schema fields.
+- [ ] **Step 2:** Add migration file(s) and schema documentation update.
+- [ ] **Step 3:** Move manage-link issuance/validation to new token columns.
+- [ ] **Step 4:** Keep DOI confirmation flow exclusively on confirmation token columns.
+- [ ] **Step 5:** Add tests for concurrent DOI + manage-link lifecycle.
+- [ ] **Done when:** Manage-link generation no longer overwrites DOI confirmation tokens.
+
+#### DB schema versioning follow-through
+- [ ] **Step 1:** Introduce version-controlled migration directory/process (Supabase SQL).
+- [ ] **Step 2:** Backfill current schema as an initial baseline migration.
+- [ ] **Step 3:** Add contributor docs for applying migrations locally and in deployment.
+- [ ] **Done when:** Schema changes are code-reviewed and reproducible from repo state.
+
+#### R11 — Extract pipeline service layer
+- [ ] **Step 1:** Identify shared logic between `app.py:_run_pipeline()` and `daily_task.py:main()` — dedup, URL extraction, evaluation orchestration, "already seen" tracking.
+- [ ] **Step 2:** Extract a `PipelineService` (or similar) in `immermatch/pipeline.py` that encapsulates search→evaluate→filter with progress callbacks (no Streamlit dependency).
+- [ ] **Step 3:** Refactor `app.py:_run_pipeline()` to call the service, keeping only UI concerns (progress bars, status widgets, card rendering).
+- [ ] **Step 4:** Refactor `daily_task.py:main()` to call the same service, keeping only cron/email concerns.
+- [ ] **Step 5:** Split remaining `app.py` concerns (subscription flow, rate limiting, profile editing) into focused modules.
+- [ ] **Step 6:** Add tests for the extracted service independent of Streamlit.
+- [ ] **Done when:** `app.py` is under 500 lines, `daily_task.py` shares orchestration code with the UI, and a new entry point (CLI, API) can call the pipeline without importing Streamlit.
+
+#### R12 — Replace file-based cache with DB-backed storage
+- [ ] **Step 1:** Audit current `ResultCache` usage — profile, queries, jobs (date-keyed), evaluations (profile-keyed).
+- [ ] **Step 2:** Design DB tables or key-value storage for each cache type with proper TTL and per-user isolation.
+- [ ] **Step 3:** Implement new cache backend behind the existing `ResultCache` interface.
+- [ ] **Step 4:** Migrate `app.py` and pipeline to use DB-backed cache; remove `.immermatch_cache/` filesystem dependency.
+- [ ] **Step 5:** Add tests for cache isolation (two users, same CV hash) and TTL expiry.
+- [ ] **Done when:** No local filesystem cache is required, and multi-instance deployment works without shared disk.
+
+#### Digest SLOs and runbooks (#45)
+- [ ] **Step 1:** Define 2–4 reliability SLOs (timeliness, send success, duplicate rate, failure recovery time).
+- [ ] **Step 2:** Define alert thresholds and owner/escalation expectations.
+- [ ] **Step 3:** Write incident runbook for provider/API/DB/email failure classes.
+- [ ] **Step 4:** Add post-incident review template.
+- [ ] **Done when:** SLOs and runbooks are documented and linked from operations docs.
+
+### Week 4 — Balanced Growth Sprint
+
+#### R9 — Privacy-safe funnel instrumentation (#31)
+- [ ] **Step 1:** Define exact funnel events and event dictionary (no PII fields).
+- [ ] **Step 2:** Implement event emission at each funnel boundary.
+- [ ] **Step 3:** Build weekly aggregate report (conversion per stage + drop-off deltas).
+- [ ] **Step 4:** Validate data retention window and privacy policy consistency.
+- [ ] **Done when:** Weekly funnel report exists and is usable for prioritization decisions.
+
+#### Growth experiments (#43)
+- [ ] **Step 1:** Propose 3 experiments with hypothesis, owner, and expected KPI shift.
+- [ ] **Step 2:** Run at least 2 experiments within the week.
+- [ ] **Step 3:** Record outcomes using a simple win/learn/kill template.
+- [ ] **Step 4:** Fold insights into next roadmap revision.
+- [ ] **Done when:** At least 2 measured experiments are completed and reviewed.
+
+#### Weekly roadmap checkpoint (R10)
+- [ ] **Step 1:** Review all active issues for impact/effort drift.
+- [ ] **Step 2:** Close, defer, or split oversized issues into executable units.
+- [ ] **Step 3:** Re-rank the next sprint backlog using current KPIs.
+- [ ] **Done when:** Open issue list reflects only near-term, execution-ready work.
 
 ---
 
-## Suggested Priority Order (Next 4 Weeks)
+## 4) KPI Targets (April 2026 Checkpoint)
 
-| Week | Focus |
-|---|---|
-| **Week 1** | Unit tests + CI pipeline + security audit |
-| **Week 2** | README, CONTRIBUTING, LICENSE, issue templates → **go public** |
-| **Week 3** | Deploy daily digest on GitHub Actions, test end-to-end |
-| **Week 4** | UX quick wins (preferences input, edit profile, personalization) |
+### Product Quality KPIs
+- Wrong-location complaint rate: **< 2%** of sessions
+- BA homepage-link exposure: **0%** in displayed results
+- Digest send-to-log mismatch incidents: **0**
+- Unsubscribe hard-delete success: **100%** (auditable)
 
-After that, move to Phase 2 (Stripe) when you have ~20+ newsletter subscribers to validate demand.
+### Conversion & Growth KPIs
+- CV upload → first search completion: **+20%** vs current baseline
+- Search completion → newsletter subscribe: **+30%** vs current baseline
+- DOI completion rate: **> 60%**
+
+---
+
+## 5) Backlog Governance (GitHub Hygiene)
+
+### Rules
+- Roadmap is the source of truth for priorities; issues must map to one active roadmap item.
+- Every issue needs: impact, effort, owner, success metric, and revisit date.
+- Close or defer issues that are not relevant in the next 4–6 weeks.
+
+### Cadence
+- **Weekly**: triage open issues, re-rank by impact/effort, close stale items.
+- **Bi-weekly**: roadmap checkpoint with KPI delta.
+
+### Active GitHub Issues (Execution Set)
+- #67 — Location input UX and transition state clarity
+- #66 — Location alias canonicalization (`Köln/Cologne`, `München/Munich`)
+- #68 — Query expander visibility during active search
+- #70 — Wrong-city carryover between consecutive searches
+- #40 — BA link hygiene (discard homepage-only links)
+- #69 — Unsubscribe hard-delete policy
+- #44 — Digest correctness and idempotency
+- #71 — Token split (`confirmation_token` vs manage token)
+- #31 — Privacy-safe funnel metrics
+- #43 — Short-cycle growth experiments
+- R11 — Extract pipeline service layer (`app.py` god file + duplicated pipeline)
+- R12 — Replace file-based cache with DB-backed storage
+
+---
+
+## 6) Deferred (Only After Demand Signal)
+
+The following remain important but are intentionally de-prioritized until product quality and user traction improve:
+- Stripe and paid tier rollout
+- Infrastructure migration (VPS/PaaS)
+- Multi-CV support
+- Advanced evaluation optimization/A-B experimentation
+
+Trigger for activation: sustained usage and clear conversion signal (e.g., stable subscriber growth and digest engagement over multiple weeks).
+
+---
+
+## 7) Decision Log
+
+- **Date:** 2026-03-06
+- **Hypothesis:** Fixing relevance/trust and UX transition friction will improve conversion more than shipping monetization now.
+- **Evidence:** User feedback on location inconsistency, mixed-city results, empty query expander, weak link quality, and stale issue backlog.
+- **Decision:** Re-prioritize next 4 weeks to quality/reliability + balanced growth instrumentation.
+- **Expected KPI impact:** Higher search completion, higher subscribe + DOI conversion, fewer trust-breaking mismatches.
+- **Revisit date:** 2026-04-03

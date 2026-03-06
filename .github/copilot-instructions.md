@@ -66,6 +66,22 @@ If a prompt spans both domains, consult both docs and explicitly separate recomm
 - **Search/API domain:** api, search, provider, bundesagentur, serpapi, stale jobs, query quality, deduplication, routing, pagination
 - **Strategy domain:** strategy, roadmap, prioritization, launch, pricing, monetization, market, growth, KPI, positioning
 
+## Active Roadmap (March 2026)
+
+Source of truth: `docs/strategy/ROADMAP.md`. Pick the next unchecked task from there.
+
+Current focus areas (in priority order):
+1. Search relevance + location consistency (R1, R2, R3, R4)
+2. Link quality + subscription lifecycle (R5, R6, R7)
+3. Architecture debt (R8, R11, R12)
+4. Growth instrumentation (R9, R10)
+
+Planned architectural changes:
+- **R11**: Extract `PipelineService` from `app.py` — shared with `daily_task.py`
+- **R12**: Replace file-based `ResultCache` with DB-backed storage
+- **R8**: Split `confirmation_token` / `manage_token` in DB schema
+- **R6**: Unsubscribe = hard-delete subscriber row
+
 ## Architecture at a glance
 
 | Module | Purpose |
