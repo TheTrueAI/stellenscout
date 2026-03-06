@@ -99,7 +99,7 @@ Evaluate this job match and return JSON."""
     prompt = f"{SCREENER_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     try:
-        content = call_gemini(client, prompt, max_tokens=4096)
+        content = call_gemini(client, prompt, max_tokens=4096, response_schema=JobEvaluation.model_json_schema())
     except (ServerError, ClientError):
         return JobEvaluation(score=50, reasoning="Could not evaluate (API error after retries)", missing_skills=[])
 

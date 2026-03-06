@@ -159,7 +159,13 @@ IMPORTANT OUTPUT RULES:
     last_error: Exception | None = None
 
     for attempt in range(3):
-        content = call_gemini(client, prompt, max_tokens=8192, thinking_level="low")
+        content = call_gemini(
+            client,
+            prompt,
+            max_tokens=8192,
+            thinking_level="low",
+            response_schema=CandidateProfile.model_json_schema(),
+        )
 
         try:
             data = parse_json(content)
@@ -272,8 +278,15 @@ def _generate_search_queries_for_provider(
         f"{prompt}\n\nIMPORTANT: Return ONLY a valid JSON array of strings with exactly {num_queries} queries."
     )
 
+    search_queries_schema = {"type": "array", "items": {"type": "string"}}
+
     for attempt in range(2):
-        content = call_gemini(client, prompt if attempt == 0 else retry_prompt, max_tokens=8192)
+        content = call_gemini(
+            client,
+            prompt if attempt == 0 else retry_prompt,
+            max_tokens=8192,
+            response_schema=search_queries_schema,
+        )
         try:
             queries = parse_json(content)
         except ValueError:

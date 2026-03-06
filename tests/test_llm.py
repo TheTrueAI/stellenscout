@@ -104,3 +104,27 @@ class TestCallGemini:
             call_gemini(client, "prompt")
 
         mock_sleep.assert_not_called()
+
+    def test_response_schema_flows_to_config(self):
+        """When response_schema is provided, config includes structured output params."""
+        client = self._make_client([self._make_response('{"key": "value"}')])
+        schema = {"type": "object", "properties": {"key": {"type": "string"}}}
+
+        call_gemini(client, "prompt", response_schema=schema)
+
+        config = client.models.generate_content.call_args.kwargs.get(
+            "config"
+        ) or client.models.generate_content.call_args[1].get("config")
+        assert config.response_mime_type == "application/json"
+        assert config.response_json_schema == schema
+
+    def test_no_response_schema_omits_structured_output(self):
+        """Without response_schema, config should not set response_mime_type."""
+        client = self._make_client([self._make_response("hello")])
+
+        call_gemini(client, "prompt")
+
+        config = client.models.generate_content.call_args.kwargs.get(
+            "config"
+        ) or client.models.generate_content.call_args[1].get("config")
+        assert config.response_mime_type is None

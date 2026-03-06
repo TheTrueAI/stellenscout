@@ -57,6 +57,8 @@ class TestEvaluateJob:
         assert result.reasoning == "Good fit"
         assert result.missing_skills == ["Go"]
         mock_call.assert_called_once()
+        # Verify structured output schema is passed
+        assert mock_call.call_args.kwargs.get("response_schema") == JobEvaluation.model_json_schema()
 
     @patch("immermatch.evaluator_agent.call_gemini")
     def test_api_error_returns_fallback(self, mock_call: MagicMock, mock_client, simple_profile, simple_job):

@@ -38,10 +38,15 @@ def call_gemini(
     temperature: float = 1.0,
     max_tokens: int = 1024,
     thinking_level: types.ThinkingLevel | str | None = None,
+    response_schema: dict | None = None,
 ) -> str:
     """Make a Gemini API call with retry logic.
 
     Retries on 429 (rate limit) and 503 (overloaded) with exponential backoff.
+
+    When *response_schema* is provided the request uses Gemini structured
+    output (``response_mime_type="application/json"``), which guarantees the
+    response is valid JSON matching the given JSON Schema.
     """
     last_exception: Exception | None = None
 
@@ -49,17 +54,22 @@ def call_gemini(
         types.ThinkingConfig(thinking_level=types.ThinkingLevel(thinking_level)) if thinking_level else None
     )
 
+    config_kwargs: dict = {
+        "temperature": temperature,
+        "max_output_tokens": max_tokens,
+        "thinking_config": thinking_config,
+    }
+    if response_schema is not None:
+        config_kwargs["response_mime_type"] = "application/json"
+        config_kwargs["response_json_schema"] = response_schema
+
     for attempt in range(MAX_RETRIES):
         try:
             with _gemini_semaphore:
                 response = client.models.generate_content(
                     model=MODEL,
                     contents=prompt,
-                    config=types.GenerateContentConfig(
-                        temperature=temperature,
-                        max_output_tokens=max_tokens,
-                        thinking_config=thinking_config,
-                    ),
+                    config=types.GenerateContentConfig(**config_kwargs),
                 )
             return response.text or ""
         except ServerError as e:
