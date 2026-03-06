@@ -6,9 +6,9 @@ Environment note:
 - For formatting, use `make format` (do not run direct `ruff format ...` commands).
 
 Required context order:
-1) docs/search-api/AGENT.md
+1) docs/search-api/AGENT.md (includes active roadmap items R2, R4, R5, R12)
 2) docs/search-api/Improving Job Search API Results.md
-3) AGENTS.md (search architecture sections)
+3) AGENTS.md (search architecture sections with planned-change annotations)
 
 Output requirements:
 - Focus only on search/API execution details (provider behavior, relevance quality, stale-link mitigation, routing, pagination, deduplication).

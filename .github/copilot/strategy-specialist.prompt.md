@@ -6,9 +6,9 @@ Environment note:
 - For formatting, use `make format` (do not run direct `ruff format ...` commands).
 
 Required context order:
-1) docs/strategy/AGENT.md
-2) docs/strategy/ROADMAP.md
-3) AGENTS.md (strategy/monetization/reliability sections)
+1) docs/strategy/AGENT.md (includes active execution set and KPI targets)
+2) docs/strategy/ROADMAP.md (step-by-step plans, R1-R12)
+3) AGENTS.md (architecture sections with planned-change annotations)
 
 Output requirements:
 - Focus on prioritization, sequencing, launch/monetization tradeoffs, and KPI impact.

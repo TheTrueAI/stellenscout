@@ -37,6 +37,22 @@ Prefer Makefile targets for daily workflow:
 - Test fixture files (sample CVs) in `tests/fixtures/`
 - Prefer external libraries and builtins over custom code
 
+## Active Roadmap (March 2026)
+
+Source of truth: `docs/strategy/ROADMAP.md`. Pick the next unchecked task from there.
+
+Current focus areas (in priority order):
+1. Search relevance + location consistency (R1, R2, R3, R4)
+2. Link quality + subscription lifecycle (R5, R6, R7)
+3. Architecture debt (R8, R11, R12)
+4. Growth instrumentation (R9, R10)
+
+Planned architectural changes to be aware of:
+- **R11**: Extract `PipelineService` from `app.py` — shared with `daily_task.py`
+- **R12**: Replace file-based `ResultCache` with DB-backed storage
+- **R8**: Split `confirmation_token` / `manage_token` in DB schema
+- **R6**: Unsubscribe = hard-delete subscriber row
+
 ## On-demand skills (loaded only when needed)
 
 - **Topic routing**: `.claude/skills/topic-routing.md` — search/API/strategy doc routing
