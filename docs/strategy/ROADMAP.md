@@ -41,20 +41,20 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 ### Week 1 — Relevance + UX Friction Removal
 
 #### R1 — Sidebar location synchronization + transition clarity (#67)
-- [ ] **Step 1:** Document current UI state machine for `location` input (idle, extracting CV, ready, submitted, searching).
-- [ ] **Step 2:** Define one canonical source-of-truth session key for location state and submission state.
-- [ ] **Step 3:** Disable location input and submit CTA immediately after submit event is accepted.
-- [ ] **Step 4:** Update CTA labels/spinner text per phase (extracting, generating queries, searching, evaluating).
-- [ ] **Step 5:** Add UI test that verifies disabled state and label transitions.
-- [ ] **Done when:** No ambiguous editable state remains after submit, and transition labels match actual pipeline phase.
+- [x] **Step 1:** Document current UI state machine for `location` input (idle, extracting CV, ready, submitted, searching).
+- [x] **Step 2:** Define one canonical source-of-truth session key for location state and submission state.
+- [x] **Step 3:** Disable location input and submit CTA immediately after submit event is accepted.
+- [x] **Step 4:** Update CTA labels/spinner text per phase (extracting, generating queries, searching, evaluating).
+- [x] **Step 5:** Add UI test that verifies disabled state and label transitions.
+- [x] **Done when:** No ambiguous editable state remains after submit, and transition labels match actual pipeline phase.
 
 #### R3 — Query expander visibility during active search (#68)
-- [ ] **Step 1:** Identify where generated queries are first available in session state.
-- [ ] **Step 2:** Persist query list immediately when generated (before downstream pipeline completes).
-- [ ] **Step 3:** Render persisted query list in expander during active search/evaluation.
-- [ ] **Step 4:** Keep list visible on reruns unless a new search run explicitly resets it.
-- [ ] **Step 5:** Add UI regression test for non-empty expander during active run.
-- [ ] **Done when:** `✅ Queries generated` always shows generated queries as soon as they exist.
+- [x] **Step 1:** Identify where generated queries are first available in session state.
+- [x] **Step 2:** Persist query list immediately when generated (before downstream pipeline completes).
+- [x] **Step 3:** Render persisted query list in expander during active search/evaluation.
+- [x] **Step 4:** Keep list visible on reruns unless a new search run explicitly resets it.
+- [x] **Step 5:** Add UI regression test for non-empty expander during active run.
+- [x] **Done when:** `✅ Queries generated` always shows generated queries as soon as they exist.
 
 #### R4 — Wrong-city carryover on consecutive searches (#70)
 - [ ] **Step 1:** Reproduce with deterministic sequence (Munich → Berlin, Köln → München, etc.) and record expected/actual.

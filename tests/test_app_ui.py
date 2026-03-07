@@ -4,9 +4,14 @@ Uses Streamlit's AppTest framework to verify Phase A landing page renders,
 the consent checkbox is present, and sidebar elements appear.
 """
 
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from streamlit.testing.v1 import AppTest
+
+from immermatch.cache import ResultCache
+from immermatch.models import CandidateProfile
+from immermatch.search_api.search_provider import get_provider, get_provider_fingerprint
 
 _FAKE_ENV = {
     "GOOGLE_API_KEY": "fake-google-key",  # pragma: allowlist secret
@@ -18,7 +23,7 @@ _FAKE_ENV = {
     "APP_URL": "https://app.example.com",
 }
 
-APP_FILE = "immermatch/app.py"
+APP_FILE = str(Path(__file__).resolve().parents[1] / "immermatch" / "app.py")
 
 
 class TestPhaseALanding:
@@ -68,6 +73,18 @@ def _simulate_pipeline_active(at: AppTest) -> None:
     at.session_state["run_requested"] = True
     at.session_state["location"] = "Munich"
     at.session_state["_cv_consent_given"] = True
+
+
+def _sample_profile_for_pipeline() -> CandidateProfile:
+    return CandidateProfile(
+        skills=["Python"],
+        experience_level="Mid",
+        years_of_experience=3,
+        roles=["Data Engineer"],
+        languages=["English C1"],
+        domain_expertise=["SaaS"],
+        first_name="Test",
+    )
 
 
 class TestPhaseBTransitionClarity:
@@ -124,3 +141,39 @@ class TestPhaseBTransitionClarity:
 
         sidebar_text = " ".join(str(el.value) for el in at.sidebar.markdown)
         assert "Finding jobs" in sidebar_text, f"Expected pipeline activity in sidebar. Sidebar text: {sidebar_text}"
+
+    @patch.dict("os.environ", _FAKE_ENV, clear=False)
+    @patch("streamlit.rerun", return_value=None)
+    @patch("immermatch.db.get_admin_client", return_value=MagicMock())
+    @patch("immermatch.db.purge_inactive_subscribers", return_value=0)
+    def test_queries_render_in_status_during_active_run(
+        self,
+        _mock_purge: MagicMock,
+        _mock_db: MagicMock,
+        _mock_rerun: MagicMock,
+        tmp_path: Path,
+        monkeypatch,
+    ) -> None:
+        """Generated queries are persisted and rendered during active pipeline run."""
+        monkeypatch.chdir(tmp_path)
+
+        profile = _sample_profile_for_pipeline()
+        queries = ["provider=Bundesagentur für Arbeit::Data Engineer"]
+        cache = ResultCache(cache_dir=tmp_path / ".immermatch_cache" / "fakehash")
+        provider_fingerprint = get_provider_fingerprint(get_provider("Munich"))
+        cache.save_queries(profile, "Munich", queries, provider_fingerprint)
+        cache.save_jobs([], "Munich")
+
+        at = AppTest.from_file(APP_FILE)
+        at.session_state["cv_file_hash"] = "fakehash"
+        at.session_state["cv_file_name"] = "test.pdf"
+        at.session_state["cv_text"] = "fake-cv-text"
+        at.session_state["profile"] = profile
+        at.session_state["run_requested"] = True
+        at.session_state["location"] = "Munich"
+        at.session_state["_cv_consent_given"] = True
+        at.run()
+
+        assert at.session_state["queries"] == queries
+        markdown_text = " ".join(str(el.value) for el in at.markdown)
+        assert "Data Engineer" in markdown_text, f"Expected query text in markdown output. Output: {markdown_text}"

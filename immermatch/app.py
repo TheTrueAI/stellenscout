@@ -905,7 +905,11 @@ def _run_pipeline() -> None:
             queries = generate_search_queries(client, profile, location, provider=provider)
             cache.save_queries(profile, location, queries, provider_fingerprint)
             status.update(label="✅ Queries generated", state="complete")
-    st.session_state.queries = queries
+        st.session_state.queries = queries
+        for q in queries:
+            _, clean_query = parse_provider_query(q)
+            if clean_query and clean_query.strip():
+                st.markdown(f"- {clean_query.strip()}")
 
     # ---- Step 2 & 3: Search + evaluate in parallel ----------------------
     # Jobs are submitted for evaluation as soon as each search query returns
@@ -1123,7 +1127,8 @@ if st.session_state.evaluated_jobs is not None:
         ):
             for q in st.session_state.queries:
                 _, clean_query = parse_provider_query(q)
-                st.markdown(f"- {clean_query}")
+                if clean_query and clean_query.strip():
+                    st.markdown(f"- {clean_query.strip()}")
 
     # -- Profile (collapsed) -----------------------------------------------
     if st.session_state.profile is not None:
