@@ -604,6 +604,8 @@ with st.sidebar:
 
     if st.session_state.evaluated_jobs is not None:
         st.markdown(f"🎯 **Matches:** {len(st.session_state.evaluated_jobs)}")
+    elif st.session_state.run_requested:
+        st.markdown("⏳ **Pipeline:** Finding jobs...")
 
     st.divider()
 
@@ -705,7 +707,8 @@ else:
 
     if not has_results:
         # ===== Phase B: CV uploaded, no results yet ==========================
-        _render_step_indicator(2)
+        _pipeline_active = st.session_state.run_requested
+        _render_step_indicator(3 if _pipeline_active else 2)
 
         col_pad_l, col_center, col_pad_r = st.columns([1, 2, 1])
         with col_center:
@@ -720,12 +723,15 @@ else:
                     max_chars=100,
                     placeholder="e.g. Munich, Berlin, Hamburg...",
                     help="Currently searches German job listings via Bundesagentur für Arbeit.",
+                    disabled=_pipeline_active,
                 )
 
+                _submit_label = "⏳ Finding jobs..." if _pipeline_active else "🚀 Find Jobs"
                 run_button = st.form_submit_button(
-                    "🚀 Find Jobs",
+                    _submit_label,
                     use_container_width=True,
                     type="primary",
+                    disabled=_pipeline_active,
                 )
 
             location = location.strip()[:100]
@@ -842,6 +848,9 @@ if has_cv and not has_results and run_button:
     else:
         st.session_state.run_requested = True
         st.session_state.location = location
+        # Rerun so the sidebar shows the location and the form re-renders
+        # in disabled state before the blocking pipeline execution begins.
+        st.rerun()
 
 # Eager profile extraction — if we have CV text but no profile yet
 if st.session_state.cv_text and st.session_state.profile is None:
@@ -1086,8 +1095,10 @@ if st.session_state.run_requested and st.session_state.profile is not None:
     if elapsed < _RATE_LIMIT_SECONDS:
         remaining = int(_RATE_LIMIT_SECONDS - elapsed)
         st.warning(f"Please wait {remaining}s before running again.")
+        st.rerun()
     elif (ip_remaining := _check_ip_rate_limit()) is not None:
         st.warning(f"Please wait {ip_remaining}s before running again.")
+        st.rerun()
     elif _keys_ok():
         try:
             st.session_state.last_run_time = time.monotonic()
