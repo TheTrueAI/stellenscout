@@ -160,12 +160,14 @@ class ResultCache:
     # 4. Evaluations  (append-only, keyed by title|company|location)
     # ------------------------------------------------------------------
 
-    def load_evaluations(self, profile: CandidateProfile) -> dict[str, EvaluatedJob]:
-        """Return {key: EvaluatedJob} if profile hash matches, else empty dict."""
+    def load_evaluations(self, profile: CandidateProfile, location: str) -> dict[str, EvaluatedJob]:
+        """Return {key: EvaluatedJob} if profile hash and location match, else empty dict."""
         data = self._load("evaluations.json")
         if data is None:
             return {}
         if data.get("profile_hash") != _profile_hash(profile):
+            return {}
+        if data.get("location", "") != location:
             return {}
         result: dict[str, EvaluatedJob] = {}
         for key, entry in data.get("evaluated", {}).items():
@@ -179,11 +181,12 @@ class ResultCache:
                 continue
         return result
 
-    def save_evaluations(self, profile: CandidateProfile, evaluated: dict[str, EvaluatedJob]) -> None:
+    def save_evaluations(self, profile: CandidateProfile, evaluated: dict[str, EvaluatedJob], location: str) -> None:
         self._save(
             "evaluations.json",
             {
                 "profile_hash": _profile_hash(profile),
+                "location": location,
                 "evaluated": {
                     key: {
                         "job": ej.job.model_dump(),
@@ -195,12 +198,12 @@ class ResultCache:
         )
 
     def get_unevaluated_jobs(
-        self, jobs: list[JobListing], profile: CandidateProfile
+        self, jobs: list[JobListing], profile: CandidateProfile, location: str
     ) -> tuple[list[JobListing], dict[str, EvaluatedJob]]:
         """Return (jobs_to_evaluate, cached_evaluations).
 
         Jobs already in the evaluation cache are skipped.
         """
-        cached = self.load_evaluations(profile)
+        cached = self.load_evaluations(profile, location)
         new_jobs = [job for job in jobs if f"{job.title}|{job.company_name}|{job.location}" not in cached]
         return new_jobs, cached

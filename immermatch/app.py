@@ -847,6 +847,16 @@ if has_cv and not has_results and run_button:
         st.warning("Please provide CV processing consent before starting the job search.")
     else:
         st.session_state.run_requested = True
+        # Clear stale results if location changed
+        if location != st.session_state.location:
+            st.session_state.evaluated_jobs = None
+            st.session_state.queries = None
+            st.session_state.summary = None
+            st.session_state.summary_error = None
+            prev_future = st.session_state.get("summary_future")
+            if isinstance(prev_future, Future):
+                prev_future.cancel()
+            st.session_state.summary_future = None
         st.session_state.location = location
         # Rerun so the sidebar shows the location and the form re-renders
         # in disabled state before the blocking pipeline execution begins.
@@ -925,7 +935,7 @@ def _run_pipeline() -> None:
             st.warning("No jobs found. Try adjusting your location or uploading a different CV.")
             return
 
-        new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile)
+        new_jobs, cached_evals = cache.get_unevaluated_jobs(jobs, profile, location)
         if not new_jobs:
             with st.status("✅ All evaluations loaded (cached)", state="complete"):
                 pass
@@ -952,14 +962,14 @@ def _run_pipeline() -> None:
                         _render_job_card(ej)
             progress_bar.empty()
             results_container.empty()
-            cache.save_evaluations(profile, all_evals)
+            cache.save_evaluations(profile, all_evals, location)
     else:
         # Fresh search: overlap searching and evaluating.
         if client is None:
             client = create_client()
 
         # Load any previously evaluated jobs so we skip re-evaluating them.
-        cached_evals = cache.load_evaluations(profile)
+        cached_evals = cache.load_evaluations(profile, location)
         all_evals: dict[str, EvaluatedJob] = dict(cached_evals) if cached_evals else {}
         eval_executor = ThreadPoolExecutor(max_workers=30)
         try:
@@ -1031,7 +1041,7 @@ def _run_pipeline() -> None:
                 eval_progress.empty()
                 results_container.empty()
 
-            cache.save_evaluations(profile, all_evals)
+            cache.save_evaluations(profile, all_evals, location)
         finally:
             eval_executor.shutdown(wait=True, cancel_futures=True)
 

@@ -138,15 +138,15 @@ class TestEvaluationsCache:
         ev = JobEvaluation(score=80, reasoning="Good match.")
         evaluated = {"Dev|Corp|Berlin": EvaluatedJob(job=job, evaluation=ev)}
 
-        cache.save_evaluations(profile, evaluated)
-        loaded = cache.load_evaluations(profile)
+        cache.save_evaluations(profile, evaluated, "Berlin")
+        loaded = cache.load_evaluations(profile, "Berlin")
         assert "Dev|Corp|Berlin" in loaded
         assert loaded["Dev|Corp|Berlin"].evaluation.score == 80
 
     def test_miss_on_different_profile(self, cache: ResultCache, profile: CandidateProfile):
         job = JobListing(title="Dev", company_name="Corp", location="Berlin")
         ev = JobEvaluation(score=80, reasoning="Good match.")
-        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job, evaluation=ev)})
+        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job, evaluation=ev)}, "Berlin")
 
         other = CandidateProfile(
             skills=["Java"],
@@ -155,7 +155,27 @@ class TestEvaluationsCache:
             languages=["English Native"],
             domain_expertise=["SaaS"],
         )
-        assert cache.load_evaluations(other) == {}
+        assert cache.load_evaluations(other, "Berlin") == {}
+
+    def test_miss_on_different_location(self, cache: ResultCache, profile: CandidateProfile):
+        job = JobListing(title="Dev", company_name="Corp", location="Munich")
+        ev = JobEvaluation(score=85, reasoning="Great match.")
+        cache.save_evaluations(profile, {"Dev|Corp|Munich": EvaluatedJob(job=job, evaluation=ev)}, "Munich")
+
+        assert cache.load_evaluations(profile, "Berlin") == {}
+
+    def test_location_change_overwrites(self, cache: ResultCache, profile: CandidateProfile):
+        """Saving evaluations for Berlin then Munich — loading Munich returns only Munich jobs."""
+        job_berlin = JobListing(title="Dev", company_name="Corp", location="Berlin")
+        job_munich = JobListing(title="PM", company_name="Corp", location="Munich")
+        ev = JobEvaluation(score=80, reasoning="Good.")
+
+        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job_berlin, evaluation=ev)}, "Berlin")
+        cache.save_evaluations(profile, {"PM|Corp|Munich": EvaluatedJob(job=job_munich, evaluation=ev)}, "Munich")
+
+        loaded = cache.load_evaluations(profile, "Munich")
+        assert "PM|Corp|Munich" in loaded
+        assert "Dev|Corp|Berlin" not in loaded
 
 
 class TestGetUnevaluatedJobs:
@@ -163,9 +183,20 @@ class TestGetUnevaluatedJobs:
         job1 = JobListing(title="Dev", company_name="Corp", location="Berlin")
         job2 = JobListing(title="PM", company_name="Corp", location="Berlin")
         ev = JobEvaluation(score=80, reasoning="Good.")
-        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job1, evaluation=ev)})
+        cache.save_evaluations(profile, {"Dev|Corp|Berlin": EvaluatedJob(job=job1, evaluation=ev)}, "Berlin")
 
-        new_jobs, cached = cache.get_unevaluated_jobs([job1, job2], profile)
+        new_jobs, cached = cache.get_unevaluated_jobs([job1, job2], profile, "Berlin")
         assert len(new_jobs) == 1
         assert new_jobs[0].title == "PM"
         assert "Dev|Corp|Berlin" in cached
+
+    def test_location_scoped(self, cache: ResultCache, profile: CandidateProfile):
+        """Evaluations cached for Munich should not affect Berlin's unevaluated list."""
+        job_munich = JobListing(title="Dev", company_name="Corp", location="Munich")
+        job_berlin = JobListing(title="Dev", company_name="Corp", location="Berlin")
+        ev = JobEvaluation(score=80, reasoning="Good.")
+        cache.save_evaluations(profile, {"Dev|Corp|Munich": EvaluatedJob(job=job_munich, evaluation=ev)}, "Munich")
+
+        new_jobs, cached = cache.get_unevaluated_jobs([job_berlin], profile, "Berlin")
+        assert len(new_jobs) == 1
+        assert cached == {}
