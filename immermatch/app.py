@@ -652,6 +652,7 @@ has_results = st.session_state.evaluated_jobs is not None
 # Defaults for variables set conditionally in phase branches
 run_button = False
 location = normalize_location(st.session_state.location)
+st.session_state.location = location
 
 # Render the appropriate phase
 if not has_cv:
