@@ -213,3 +213,12 @@ def location_search_variants(location: str) -> list[str]:
             seen.add(item)
             ordered.append(item)
     return ordered
+
+
+# ---------------------------------------------------------------------------
+# Public alias tables — English→canonical subset, single source of truth
+# for SerpApi query localisation (imported by serpapi_provider).
+# ---------------------------------------------------------------------------
+
+CITY_LOCALISE: dict[str, str] = {k: v for k, v in _CITY_ALIASES.items() if k != v.lower()}
+COUNTRY_LOCALISE: dict[str, str] = {k: v for k, v in _COUNTRY_ALIASES.items() if k != v.lower()}

@@ -273,7 +273,7 @@ class BundesagenturProvider:
             return []
 
         variants = location_search_variants(location)
-        per_variant = max(max_results // len(variants), 10)
+        per_variant = max(1, max_results // len(variants))
         seen_refnrs: set[str] = set()
         all_items: list[dict] = []
 

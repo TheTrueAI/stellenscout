@@ -15,7 +15,7 @@ from urllib.parse import urlparse
 
 from serpapi import GoogleSearch
 
-from ..location import location_search_variants
+from ..location import CITY_LOCALISE, COUNTRY_LOCALISE, location_search_variants, normalize_location
 from ..models import ApplyOption, JobListing
 
 # ---------------------------------------------------------------------------
@@ -210,48 +210,8 @@ def infer_gl(location: str) -> str | None:
 
 # ---------------------------------------------------------------------------
 # City / country localisation for Google Jobs queries
+# (CITY_LOCALISE and COUNTRY_LOCALISE are imported from immermatch.location)
 # ---------------------------------------------------------------------------
-
-CITY_LOCALISE: dict[str, str] = {
-    "munich": "München",
-    "cologne": "Köln",
-    "nuremberg": "Nürnberg",
-    "hanover": "Hannover",
-    "dusseldorf": "Düsseldorf",
-    "vienna": "Wien",
-    "zurich": "Zürich",
-    "geneva": "Genève",
-    "prague": "Praha",
-    "warsaw": "Warszawa",
-    "krakow": "Kraków",
-    "wroclaw": "Wrocław",
-    "copenhagen": "København",
-    "athens": "Athína",
-    "bucharest": "București",
-    "milan": "Milano",
-    "rome": "Roma",
-    "lisbon": "Lisboa",
-    "brussels": "Bruxelles",
-    "antwerp": "Antwerpen",
-    "gothenburg": "Göteborg",
-}
-
-COUNTRY_LOCALISE: dict[str, str] = {
-    "germany": "Deutschland",
-    "austria": "Österreich",
-    "switzerland": "Schweiz",
-    "netherlands": "Niederlande",
-    "czech republic": "Česká republika",
-    "czechia": "Česko",
-    "poland": "Polska",
-    "sweden": "Sverige",
-    "norway": "Norge",
-    "denmark": "Danmark",
-    "finland": "Suomi",
-    "hungary": "Magyarország",
-    "romania": "România",
-    "greece": "Ελλάδα",
-}
 
 _LOCALISE_PATTERN = re.compile(
     r"\b(" + "|".join(re.escape(k) for k in CITY_LOCALISE) + r")\b",
@@ -432,7 +392,7 @@ class SerpApiProvider:
         """Run SerpApi searches across all location variants and merge results."""
         localised_query = localise_query(query)
         variants = location_search_variants(location)
-        per_variant = max(max_results // len(variants), 10)
+        per_variant = (max_results + len(variants) - 1) // len(variants)
 
         seen: set[str] = set()
         all_jobs: list[JobListing] = []
@@ -443,7 +403,7 @@ class SerpApiProvider:
             serpapi_location: str | None = None if remote else variant or None
             jobs = search_jobs(localised_query, num_results=per_variant, gl=gl, location=serpapi_location)
             for job in jobs:
-                dedup_key = f"{job.title}|{job.company_name}|{job.location}"
+                dedup_key = f"{job.title}|{job.company_name}|{normalize_location(job.location)}"
                 if dedup_key not in seen:
                     seen.add(dedup_key)
                     all_jobs.append(job)
