@@ -160,9 +160,9 @@ class TestPhaseBTransitionClarity:
         profile = _sample_profile_for_pipeline()
         queries = ["provider=Bundesagentur für Arbeit::Data Engineer"]
         cache = ResultCache(cache_dir=tmp_path / ".immermatch_cache" / "fakehash")
-        provider_fingerprint = get_provider_fingerprint(get_provider("Munich"))
-        cache.save_queries(profile, "Munich", queries, provider_fingerprint)
-        cache.save_jobs([], "Munich")
+        provider_fingerprint = get_provider_fingerprint(get_provider("München"))
+        cache.save_queries(profile, "München", queries, provider_fingerprint)
+        cache.save_jobs([], "München")
 
         at = AppTest.from_file(APP_FILE)
         at.session_state["cv_file_hash"] = "fakehash"

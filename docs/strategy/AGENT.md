@@ -29,10 +29,10 @@ Translate product goals into an executable roadmap balancing product quality, us
 Reference `docs/strategy/ROADMAP.md` section 3 for step-by-step plans. Key items:
 
 ### Week 1 — Relevance + UX
-- R1: Sidebar location sync + transition clarity (#67)
-- R3: Query expander visibility during search (#68)
+- R1: Sidebar location sync + transition clarity (#67) ✓
+- R3: Query expander visibility during search (#68) ✓
 - R4: Wrong-city carryover fix (#70)
-- R2: Canonical location aliases (#66)
+- R2: Canonical location aliases (#66) ✓
 
 ### Week 2 — Link Quality + Subscription Lifecycle
 - R5: BA homepage-link filtering (#40)

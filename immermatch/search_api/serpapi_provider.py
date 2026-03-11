@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from serpapi import GoogleSearch
 
+from ..location import location_search_variants
 from ..models import ApplyOption, JobListing
 
 # ---------------------------------------------------------------------------
@@ -428,9 +429,23 @@ class SerpApiProvider:
         location: str,
         max_results: int = 50,
     ) -> list[JobListing]:
-        """Run a single SerpApi search with localisation and gl-code inference."""
-        remote = is_remote_only(location)
-        gl = infer_gl(location)
-        serpapi_location: str | None = None if remote else location or None
+        """Run SerpApi searches across all location variants and merge results."""
         localised_query = localise_query(query)
-        return search_jobs(localised_query, num_results=max_results, gl=gl, location=serpapi_location)
+        variants = location_search_variants(location)
+        per_variant = max(max_results // len(variants), 10)
+
+        seen: set[str] = set()
+        all_jobs: list[JobListing] = []
+
+        for variant in variants:
+            remote = is_remote_only(variant)
+            gl = infer_gl(variant)
+            serpapi_location: str | None = None if remote else variant or None
+            jobs = search_jobs(localised_query, num_results=per_variant, gl=gl, location=serpapi_location)
+            for job in jobs:
+                dedup_key = f"{job.title}|{job.company_name}|{job.location}"
+                if dedup_key not in seen:
+                    seen.add(dedup_key)
+                    all_jobs.append(job)
+
+        return all_jobs[:max_results]

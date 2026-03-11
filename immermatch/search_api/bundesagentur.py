@@ -24,6 +24,7 @@ from typing import Literal
 
 import httpx
 
+from ..location import location_search_variants
 from ..models import ApplyOption, JobListing
 from ._constants import USER_AGENT
 
@@ -255,7 +256,7 @@ class BundesagenturProvider:
         location: str,
         max_results: int = 50,
     ) -> list[JobListing]:
-        """Search for jobs and return listings with full descriptions.
+        """Search across all location variants and merge deduplicated results.
 
         Args:
             query: Free-text keyword (job title, skill, …).
@@ -271,10 +272,22 @@ class BundesagenturProvider:
             logger.debug("Skipping BA search: empty query")
             return []
 
-        items = self._search_items(query, location, max_results)
-        if not items:
+        variants = location_search_variants(location)
+        per_variant = max(max_results // len(variants), 10)
+        seen_refnrs: set[str] = set()
+        all_items: list[dict] = []
+
+        for variant in variants:
+            items = self._search_items(query, variant, per_variant)
+            for item in items:
+                refnr = item.get("refnr", "")
+                if refnr and refnr not in seen_refnrs:
+                    seen_refnrs.add(refnr)
+                    all_items.append(item)
+
+        if not all_items:
             return []
-        return self._enrich(items)
+        return self._enrich(all_items[:max_results])
 
     # ------------------------------------------------------------------
     # Internal helpers

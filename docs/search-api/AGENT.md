@@ -8,6 +8,7 @@ Maintain and improve search quality, freshness, and provider reliability for Imm
 - Activate `.venv` manually only for direct Python/pip commands run outside Make targets.
 
 ## Canonical Code Scope
+- `immermatch/location.py`
 - `immermatch/search_api/search_provider.py`
 - `immermatch/search_api/search_agent.py`
 - `immermatch/search_api/serpapi_provider.py`
@@ -27,15 +28,17 @@ Maintain and improve search quality, freshness, and provider reliability for Imm
 - **Trusted portal list** (`_TRUSTED_PORTALS` in serpapi_provider) promotes known job boards and ATS platforms (LinkedIn, StepStone, Softgarden, etc.) to `aggregator` reliability.
 - **Staleness filtering** works in two layers: `chips=date_posted:week` at SerpAPI query level, and `_is_stale()` as defense-in-depth for listings >14 days old.
 - **Link validation** (`link_validator.py`) runs concurrent HEAD requests after search to drop dead links (404/410/403) and redirect-to-homepage patterns. Only checks non-verified listings.
+- **Location normalization** (`location.py`) provides two functions: `normalize_location()` maps aliases to a canonical local form (e.g. "Munich" → "München") for consistent cache keys and display, while `location_search_variants()` returns all known forms so providers search each variant and merge results. Variant expansion happens inside each provider's `.search()` method — the orchestration layer (`search_all_queries`) is unaffected. Per-variant result counts are proportionally reduced to avoid excess API calls.
 
 ## Active Roadmap Items (Search-Relevant)
 
 These items from `docs/strategy/ROADMAP.md` directly affect search code:
 
-### R2 — Canonical location aliases (#66) [Week 1]
-- Normalize `Koln/Cologne`, `Munchen/Munich` at input boundary before query generation and provider calls.
-- Normalized value must be consistent in cache keys, provider calls, and logs.
-- Affects: `search_agent.py` (query generation), cache keying, provider `.search()` location param.
+### R2 — Canonical location aliases (#66) [Week 1] ✓
+- Implemented in `immermatch/location.py` with `normalize_location()` and `location_search_variants()`.
+- Entry points normalized: `app.py` (two locations), `daily_task.py` (subscriber location).
+- Providers (`serpapi_provider.py`, `bundesagentur.py`) loop over variants internally and deduplicate.
+- Tests in `tests/test_location.py`.
 
 ### R4 — Wrong-city carryover (#70) [Week 1]
 - Consecutive city searches in one session can show mixed-city results.

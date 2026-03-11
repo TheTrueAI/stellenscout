@@ -45,6 +45,7 @@ from immermatch.db import (
 from immermatch.emailer import send_daily_digest
 from immermatch.evaluator_agent import evaluate_all_jobs
 from immermatch.llm import create_client
+from immermatch.location import normalize_location
 from immermatch.models import CandidateProfile, EvaluatedJob, JobListing
 from immermatch.search_api.search_agent import search_all_queries
 
@@ -97,7 +98,7 @@ def main() -> int:
     # Group queries by location so we search each (query, location) only once
     location_queries: dict[str, set[str]] = defaultdict(set)
     for sub in subscribers:
-        loc = sub.get("target_location") or ""
+        loc = normalize_location(sub.get("target_location") or "")
         queries = sub.get("search_queries") or []
         for q in queries:
             location_queries[loc].add(q)

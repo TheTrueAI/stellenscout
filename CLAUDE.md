@@ -17,7 +17,7 @@ make check
 ```
 
 Prefer Makefile targets for daily workflow:
-- `make check` (full gate)
+- `make check` (full gate — auto-formats, then lints, tests, typechecks)
 - `make test` (tests only)
 - `make lint` (ruff lint/format check)
 - `make format` (format code; prefer this over direct `ruff format ...` commands)

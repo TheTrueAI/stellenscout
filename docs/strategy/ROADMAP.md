@@ -65,12 +65,12 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [ ] **Done when:** Second search only shows jobs from second city according to configured location policy.
 
 #### R2 — Canonical location aliases (#66)
-- [ ] **Step 1:** Define normalization table for priority aliases (`Köln/Cologne`, `München/Munich`).
-- [ ] **Step 2:** Normalize at input boundary (before query generation/provider selection).
-- [ ] **Step 3:** Ensure normalized value is used consistently in cache keys, provider calls, and logs.
-- [ ] **Step 4:** Add tests for alias equivalence and cache-key consistency.
-- [ ] **Step 5:** Add short note in docs describing normalization behavior.
-- [ ] **Done when:** Alias pairs produce equivalent behavior and deterministic cache reuse.
+- [x] **Step 1:** Define normalization table for priority aliases (`Köln/Cologne`, `München/Munich`).
+- [x] **Step 2:** Normalize at input boundary (before query generation/provider selection).
+- [x] **Step 3:** Ensure normalized value is used consistently in cache keys, provider calls, and logs.
+- [x] **Step 4:** Add tests for alias equivalence and cache-key consistency.
+- [x] **Step 5:** Add short note in docs describing normalization behavior.
+- [x] **Done when:** Alias pairs produce equivalent behavior and deterministic cache reuse.
 
 ### Week 2 — Link Quality + Subscription Lifecycle Correctness
 

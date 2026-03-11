@@ -46,6 +46,7 @@ from immermatch.cv_parser import SUPPORTED_EXTENSIONS, extract_text  # noqa: E40
 from immermatch.db import SUBSCRIPTION_DAYS  # noqa: E402
 from immermatch.evaluator_agent import evaluate_job, generate_summary  # noqa: E402
 from immermatch.llm import create_client  # noqa: E402
+from immermatch.location import normalize_location  # noqa: E402
 from immermatch.models import CandidateProfile, EvaluatedJob, JobListing  # noqa: E402
 from immermatch.search_api.link_validator import validate_jobs  # noqa: E402
 from immermatch.search_api.search_agent import (  # noqa: E402
@@ -650,7 +651,7 @@ has_results = st.session_state.evaluated_jobs is not None
 
 # Defaults for variables set conditionally in phase branches
 run_button = False
-location = st.session_state.location
+location = normalize_location(st.session_state.location)
 
 # Render the appropriate phase
 if not has_cv:
@@ -891,7 +892,7 @@ if st.session_state.cv_text and st.session_state.profile is None:
 def _run_pipeline() -> None:
     """Execute the pipeline from query generation onward."""
     profile = st.session_state.profile
-    location = st.session_state.location
+    location = normalize_location(st.session_state.location)
     if profile is None:
         st.error("No candidate profile available. Please upload a CV first.")
         return
