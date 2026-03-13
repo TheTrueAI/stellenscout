@@ -9,6 +9,6 @@ showSidebarNavigation = false
 gatherUsageStats = false
 
 [theme]
-primaryColor = "#667eea"
+primaryColor = "#586cc9"
 secondaryBackgroundColor = "#f8fafc"
 textColor = "#1e293b"
