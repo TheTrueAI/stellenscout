@@ -80,7 +80,7 @@ def _inject_custom_css() -> None:
     <style>
     /* Hero section */
     .hero-section {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #1e40af 0%, #4338ca 100%);
         border-radius: 16px;
         padding: 3rem 2rem;
         text-align: center;
@@ -123,7 +123,7 @@ def _inject_custom_css() -> None:
     .step-active {
         background: #dbeafe;
         color: #1e40af;
-        border: 2px solid #667eea;
+        border: 2px solid #1e40af;
         animation: pulse-border 2s ease-in-out infinite;
     }
     .step-pending {
@@ -132,8 +132,8 @@ def _inject_custom_css() -> None:
         border: 2px solid #e2e8f0;
     }
     @keyframes pulse-border {
-        0%, 100% { box-shadow: 0 0 0 0 rgba(102,126,234,0.4); }
-        50% { box-shadow: 0 0 0 6px rgba(102,126,234,0); }
+        0%, 100% { box-shadow: 0 0 0 0 rgba(30,64,175,0.4); }
+        50% { box-shadow: 0 0 0 6px rgba(30,64,175,0); }
     }
 
     /* Newsletter CTA */
@@ -455,13 +455,16 @@ def _render_job_card(ej: EvaluatedJob) -> None:
     missing = ", ".join(ej.evaluation.missing_skills) if ej.evaluation.missing_skills else None
 
     with st.container(border=True):
-        left, center, right = st.columns([0.6, 4, 1])
+        left, center, right = st.columns([0.7, 4, 1])
 
         with left:
             st.markdown(
                 f'<span class="score-badge {css_class}">{emoji} {score}</span>',
                 unsafe_allow_html=True,
             )
+            st.caption(f"📍 {ej.job.location.split(',')[0]}")
+            if ej.job.posted_at:
+                st.caption(f"🕐 {ej.job.posted_at}")
 
         with center:
             label, css, tooltip = _RELIABILITY_INFO.get(ej.job.reliability, ("", "", ""))
@@ -475,7 +478,6 @@ def _render_job_card(ej: EvaluatedJob) -> None:
                 else ""
             )
             st.markdown(f"<strong>{safe_title}</strong> @ {safe_company}{badge_html}", unsafe_allow_html=True)
-            st.caption(f"📍 {ej.job.location}" + (f"  •  🕐 {ej.job.posted_at}" if ej.job.posted_at else ""))
             st.markdown(ej.evaluation.reasoning)
             if missing:
                 st.markdown(f"**Missing:** {missing}")
@@ -488,9 +490,9 @@ def _render_job_card(ej: EvaluatedJob) -> None:
                         label = "🔗 LinkedIn"
                     elif "company" in option.source.lower() or "career" in option.source.lower():
                         label = "🏢 Career Page"
-                    st.link_button(label, option.url, use_container_width=True)
+                    st.link_button(label, option.url, use_container_width=True, type="primary")
             elif ej.job.link:
-                st.link_button("Apply ↗", ej.job.link, use_container_width=True)
+                st.link_button("Apply ↗", ej.job.link, use_container_width=True, type="primary")
 
 
 def _generate_summary_background(
