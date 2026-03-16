@@ -13,6 +13,7 @@ from immermatch.search_api.bundesagentur import (
     _clean_html,
     _fetch_detail,
     _fetch_detail_api,
+    _is_homepage_url,
     _parse_listing,
     _parse_location,
     _parse_search_results,
@@ -179,14 +180,14 @@ class TestParseListing:
 
     def test_with_detail_external_url_adds_https_prefix(self) -> None:
         item = _make_stellenangebot(refnr="REF1")
-        detail = _make_detail(partner_url="careers.acme.com")
+        detail = _make_detail(partner_url="careers.acme.com/apply/123")
         listing = _parse_listing(item, detail=detail)
         assert listing is not None
-        assert listing.apply_options[1].url == "https://careers.acme.com"
+        assert listing.apply_options[1].url == "https://careers.acme.com/apply/123"
 
     def test_with_detail_external_url_default_name(self) -> None:
         item = _make_stellenangebot(refnr="REF1")
-        detail = _make_detail(partner_url="https://example.com")
+        detail = _make_detail(partner_url="https://example.com/apply/job-123")
         listing = _parse_listing(item, detail=detail)
         assert listing is not None
         assert listing.apply_options[1].source == "Company Website"
@@ -538,7 +539,7 @@ class TestEnrich:
 
     def test_enrich_with_external_apply_url(self) -> None:
         items = [_make_stellenangebot(refnr="r1")]
-        detail = _make_detail(partner_url="https://jobs.example.com", partner_name="Example")
+        detail = _make_detail(partner_url="https://jobs.example.com/apply/123", partner_name="Example")
 
         provider = BundesagenturProvider()
         with (
@@ -550,7 +551,7 @@ class TestEnrich:
 
         assert len(listings[0].apply_options) == 2
         assert listings[0].apply_options[1].source == "Example"
-        assert listings[0].apply_options[1].url == "https://jobs.example.com"
+        assert listings[0].apply_options[1].url == "https://jobs.example.com/apply/123"
 
     def test_api_then_html_strategy_falls_back_to_html(self) -> None:
         items = [_make_stellenangebot(refnr="r1", titel="Dev", arbeitgeber="Corp")]
@@ -597,6 +598,60 @@ class TestEnrich:
         assert len(listings) == 1
         assert listings[0].description == "HTML only detail"
         mock_api.assert_not_called()
+
+
+class TestIsHomepageUrl:
+    """Unit tests for _is_homepage_url."""
+
+    def test_ba_homepage(self) -> None:
+        assert _is_homepage_url("https://www.arbeitsagentur.de/") is True
+
+    def test_ba_jobsuche_root(self) -> None:
+        assert _is_homepage_url("https://www.arbeitsagentur.de/jobsuche") is True
+
+    def test_ba_jobdetail_link(self) -> None:
+        assert _is_homepage_url("https://www.arbeitsagentur.de/jobsuche/jobdetail/10000-123-S") is False
+
+    def test_root_url(self) -> None:
+        assert _is_homepage_url("https://company.de/") is True
+
+    def test_generic_karriere_page(self) -> None:
+        assert _is_homepage_url("https://company.de/karriere") is True
+
+    def test_generic_careers_page(self) -> None:
+        assert _is_homepage_url("https://company.de/careers") is True
+
+    def test_deep_job_url(self) -> None:
+        assert _is_homepage_url("https://company.de/jobs/12345") is False
+
+    def test_specific_career_subpage(self) -> None:
+        assert _is_homepage_url("https://company.de/karriere/stellenangebot/12345") is False
+
+
+class TestParseListingHomepageFiltering:
+    """Integration tests for homepage URL filtering in _parse_listing."""
+
+    def test_homepage_partner_url_filtered(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="https://www.arbeitsagentur.de/", partner_name="BA")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert len(listing.apply_options) == 1
+        assert listing.apply_options[0].source == "Arbeitsagentur"
+
+    def test_valid_partner_url_kept(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="https://careers.acme.com/apply/12345", partner_name="ACME")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert len(listing.apply_options) == 2
+
+    def test_generic_root_partner_url_filtered(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="https://company.de/", partner_name="Company")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert len(listing.apply_options) == 1
 
 
 class TestSearchProviderProtocol:
