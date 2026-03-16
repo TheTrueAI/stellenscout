@@ -21,6 +21,7 @@ import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Literal
+from urllib.parse import urlparse
 
 import httpx
 
@@ -51,6 +52,40 @@ _NG_STATE_RE = re.compile(
     r'<script\s+id="ng-state"\s+type="application/json">(.*?)</script>',
     re.DOTALL,
 )
+
+
+_GENERIC_PATH_SEGMENTS = frozenset(
+    {
+        "karriere",
+        "careers",
+        "jobs",
+        "career",
+        "stellenangebote",
+        "en",
+        "de",
+        "home",
+        "startseite",
+    }
+)
+
+
+def _is_homepage_url(url: str) -> bool:
+    """Return True if *url* looks like a generic homepage rather than a job page."""
+    parsed = urlparse(url)
+    host = parsed.hostname or ""
+    path = parsed.path.rstrip("/")
+
+    # BA homepage — host is arbeitsagentur.de but NOT a jobdetail link
+    if host.endswith("arbeitsagentur.de"):
+        return not path.startswith("/jobsuche/jobdetail/")
+
+    # Root-path URL (e.g. https://company.de/)
+    if not path:
+        return True
+
+    # Single generic segment (e.g. /karriere, /careers)
+    segments = [s for s in path.split("/") if s]
+    return len(segments) == 1 and segments[0].lower() in _GENERIC_PATH_SEGMENTS
 
 
 def _build_ba_link(refnr: str) -> str:
@@ -206,8 +241,11 @@ def _parse_listing(item: dict, detail: dict | None = None) -> JobListing | None:
                 ext_url = f"https:{ext_url}"
             elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", ext_url):
                 ext_url = f"https://{ext_url}"
-            ext_name = detail.get("allianzpartnerName", "Company Website")
-            apply_options.append(ApplyOption(source=ext_name, url=ext_url))
+            if _is_homepage_url(ext_url):
+                logger.debug("Filtered homepage partner URL for %s: %s", refnr, ext_url)
+            else:
+                ext_name = detail.get("allianzpartnerName", "Company Website")
+                apply_options.append(ApplyOption(source=ext_name, url=ext_url))
 
     return JobListing(
         title=titel or beruf or "Unknown",
@@ -365,11 +403,17 @@ class BundesagenturProvider:
                     details[refnr] = {}
 
         listings: list[JobListing] = []
+        filtered = 0
         for item in items:
             refnr = item["refnr"]
-            listing = _parse_listing(item, detail=details.get(refnr))
+            detail = details.get(refnr)
+            listing = _parse_listing(item, detail=detail)
             if listing is not None:
                 listings.append(listing)
+                if detail and detail.get("allianzpartnerUrl", "").strip() and len(listing.apply_options) == 1:
+                    filtered += 1
+        if filtered:
+            logger.info("Filtered %d homepage partner link(s) in this batch", filtered)
         return listings
 
     def _get_detail(self, api_client: httpx.Client, html_client: httpx.Client, refnr: str) -> dict:
