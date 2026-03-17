@@ -627,6 +627,12 @@ class TestIsHomepageUrl:
     def test_specific_career_subpage(self) -> None:
         assert _is_homepage_url("https://company.de/karriere/stellenangebot/12345") is False
 
+    def test_similar_ba_domain_not_treated_as_ba(self) -> None:
+        assert _is_homepage_url("https://fakearbeitsagentur.de/jobsuche/jobdetail/123") is False
+
+    def test_root_url_with_query_not_homepage(self) -> None:
+        assert _is_homepage_url("https://company.de/?jobId=123") is False
+
 
 class TestParseListingHomepageFiltering:
     """Integration tests for homepage URL filtering in _parse_listing."""
@@ -649,6 +655,21 @@ class TestParseListingHomepageFiltering:
     def test_generic_root_partner_url_filtered(self) -> None:
         item = _make_stellenangebot(refnr="REF1")
         detail = _make_detail(partner_url="https://company.de/", partner_name="Company")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert len(listing.apply_options) == 1
+
+    def test_root_partner_url_with_query_kept(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="https://company.de/?jobId=123", partner_name="Company")
+        listing = _parse_listing(item, detail=detail)
+        assert listing is not None
+        assert len(listing.apply_options) == 2
+        assert listing.apply_options[1].url == "https://company.de/?jobId=123"
+
+    def test_non_http_scheme_partner_url_filtered(self) -> None:
+        item = _make_stellenangebot(refnr="REF1")
+        detail = _make_detail(partner_url="javascript:alert(1)", partner_name="Bad")
         listing = _parse_listing(item, detail=detail)
         assert listing is not None
         assert len(listing.apply_options) == 1
