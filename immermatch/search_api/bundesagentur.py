@@ -72,16 +72,18 @@ _GENERIC_PATH_SEGMENTS = frozenset(
 def _is_homepage_url(url: str) -> bool:
     """Return True if *url* looks like a generic homepage rather than a job page."""
     parsed = urlparse(url)
-    host = parsed.hostname or ""
-    path = parsed.path.rstrip("/")
+    host = (parsed.hostname or "").lower()
+    path = (parsed.path or "").rstrip("/")
+    query = parsed.query.strip()
+    fragment = parsed.fragment.strip()
 
     # BA homepage — host is arbeitsagentur.de but NOT a jobdetail link
-    if host.endswith("arbeitsagentur.de"):
+    if host == "arbeitsagentur.de" or host.endswith(".arbeitsagentur.de"):
         return not path.startswith("/jobsuche/jobdetail/")
 
     # Root-path URL (e.g. https://company.de/)
     if not path:
-        return True
+        return not query and not fragment
 
     # Single generic segment (e.g. /karriere, /careers)
     segments = [s for s in path.split("/") if s]
@@ -241,7 +243,10 @@ def _parse_listing(item: dict, detail: dict | None = None) -> JobListing | None:
                 ext_url = f"https:{ext_url}"
             elif not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", ext_url):
                 ext_url = f"https://{ext_url}"
-            if _is_homepage_url(ext_url):
+            parsed_ext = urlparse(ext_url)
+            if parsed_ext.scheme.lower() not in {"http", "https"}:
+                logger.debug("Filtered non-http(s) partner URL for %s: %s", refnr, ext_url)
+            elif _is_homepage_url(ext_url):
                 logger.debug("Filtered homepage partner URL for %s: %s", refnr, ext_url)
             else:
                 ext_name = detail.get("allianzpartnerName", "Company Website")

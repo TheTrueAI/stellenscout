@@ -57,12 +57,12 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [x] **Done when:** `✅ Queries generated` always shows generated queries as soon as they exist.
 
 #### R4 — Wrong-city carryover on consecutive searches (#70)
-- [ ] **Step 1:** Reproduce with deterministic sequence (Munich → Berlin, Köln → München, etc.) and record expected/actual.
+- [x] **Step 1:** Reproduce with deterministic sequence (Munich → Berlin, Köln → München, etc.) and record expected/actual.
 - [ ] **Step 2:** Trace city-specific state through cache keying, session state, and rendering pipeline.
-- [ ] **Step 3:** Ensure city-scoped result containers are reset or replaced on location change.
-- [ ] **Step 4:** Validate that UI cards use current run output only, not stale prior-run fragments.
-- [ ] **Step 5:** Add regression test for two consecutive city searches in one session.
-- [ ] **Done when:** Second search only shows jobs from second city according to configured location policy.
+- [x] **Step 3:** Ensure city-scoped result containers are reset or replaced on location change.
+- [x] **Step 4:** Validate that UI cards use current run output only, not stale prior-run fragments.
+- [x] **Step 5:** Add regression test for two consecutive city searches in one session.
+- [x] **Done when:** Second search only shows jobs from second city according to configured location policy.
 
 #### R2 — Canonical location aliases (#66)
 - [x] **Step 1:** Define normalization table for priority aliases (`Köln/Cologne`, `München/Munich`).
@@ -75,12 +75,11 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 ### Week 2 — Link Quality + Subscription Lifecycle Correctness
 
 #### R5 — BA homepage-link filtering (#40)
-- [ ] **Step 1:** Define rules for non-actionable links (homepage-only, generic landing redirects).
-- [ ] **Step 2:** Apply filtering in BA parsing/link-validation path before UI rendering.
-- [ ] **Step 3:** Preserve valid alternative links when one option is filtered.
-- [ ] **Step 4:** Add test fixtures with mixed valid + homepage links.
-- [ ] **Step 5:** Add metric/log counter for filtered BA links (non-PII).
-- [ ] **Done when:** No BA job card shows `https://www.arbeitsagentur.de/` as an apply option.
+- [x] **Step 1:** Define rules for non-actionable links (homepage-only, generic landing redirects).
+- [x] **Step 2:** Apply filtering in BA parsing/link-validation path before UI rendering.
+- [x] **Step 3:** Preserve valid alternative links when one option is filtered.
+- [x] **Step 4:** Add test fixtures with mixed valid + homepage links.
+- [x] **Done when:** No BA job card shows `https://www.arbeitsagentur.de/` as an apply option.
 
 #### R6 — Unsubscribe hard-delete policy (#69)
 - [ ] **Step 1:** Confirm DB referential path for deleting subscriber row safely.
