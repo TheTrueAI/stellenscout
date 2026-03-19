@@ -111,7 +111,7 @@ def main() -> int:
     )
 
     # ── 5. Search once per unique (query-set, location) ──────────────────
-    # Collect all jobs keyed by title|company to avoid duplication
+    # Collect all jobs keyed by title|company_name|location to avoid duplication
     all_jobs: dict[str, JobListing] = {}
     # Track which URLs belong to which normalized location
     location_urls: dict[str, set[str]] = defaultdict(set)
@@ -196,7 +196,7 @@ def main() -> int:
         sent_ids = get_sent_job_ids(db, sub_id)
         sub_loc = normalize_location(sub.get("target_location") or "")
         sub_urls = location_urls.get(sub_loc, set())
-        unseen_urls = [url for url in sub_urls if url_to_db_id.get(url) and url_to_db_id[url] not in sent_ids]
+        unseen_urls = sorted(url for url in sub_urls if url_to_db_id.get(url) and url_to_db_id[url] not in sent_ids)
 
         if not unseen_urls:
             log.info("  sub=%s — no unseen jobs, skipping", sub_id)
@@ -213,14 +213,18 @@ def main() -> int:
         # Low-score IDs are always safe to log (we never want to re-evaluate them).
         # Good-match IDs are only logged after a successful send so they retry
         # on the next run if the email fails.
-        ej_urls = {id(ej): _job_url(ej) for ej in evaluated}
-        good_matches = [ej for ej in evaluated if ej.evaluation.score >= sub_min_score]
+        evaluated_with_urls = [(ej, _job_url(ej)) for ej in evaluated]
+        good_matches = [ej for ej, _ in evaluated_with_urls if ej.evaluation.score >= sub_min_score]
         low_score_ids = [
-            url_to_db_id[ej_urls[id(ej)]]
-            for ej in evaluated
-            if ej.evaluation.score < sub_min_score and ej_urls[id(ej)] in url_to_db_id
+            url_to_db_id[url]
+            for ej, url in evaluated_with_urls
+            if ej.evaluation.score < sub_min_score and url in url_to_db_id
         ]
-        good_match_ids = [url_to_db_id[ej_urls[id(ej)]] for ej in good_matches if ej_urls[id(ej)] in url_to_db_id]
+        good_match_ids = [
+            url_to_db_id[url]
+            for ej, url in evaluated_with_urls
+            if ej.evaluation.score >= sub_min_score and url in url_to_db_id
+        ]
 
         if not good_matches:
             log.info("  sub=%s — no jobs above score %d", sub_id, sub_min_score)
@@ -234,7 +238,7 @@ def main() -> int:
             {
                 "title": ej.job.title,
                 "company": ej.job.company_name,
-                "url": ej_urls[id(ej)],
+                "url": _job_url(ej),
                 "score": ej.evaluation.score,
                 "location": ej.job.location,
             }
@@ -272,11 +276,24 @@ def main() -> int:
                 log_sent_jobs(db, sub_id, low_score_ids)
             continue
 
-        # Send succeeded — log ALL evaluated jobs and mark subscriber as sent
+        # Send succeeded — first mark subscriber as sent, then best-effort log ALL evaluated jobs
+        try:
+            mark_subscriber_last_sent(db, sub_id)
+        except Exception:
+            log.exception(
+                "  sub=%s — failed to mark last_sent_at; subscriber may receive duplicate digests",
+                sub_id,
+            )
+
         all_eval_ids = low_score_ids + good_match_ids
         if all_eval_ids:
-            log_sent_jobs(db, sub_id, all_eval_ids)
-        mark_subscriber_last_sent(db, sub_id)
+            try:
+                log_sent_jobs(db, sub_id, all_eval_ids)
+            except Exception:
+                log.exception(
+                    "  sub=%s — failed to log sent jobs; will retry evaluation next run",
+                    sub_id,
+                )
 
     log.info("Daily digest complete.")
     return 0
