@@ -455,6 +455,323 @@ class TestDailyTaskWeeklyCadence:
         mock_email.assert_not_called()
 
 
+class TestDailyTaskSendLogIntegrity:
+    """R7: send/log mismatch fix — good-match IDs only logged after successful send."""
+
+    @patch.dict("os.environ", {"APP_URL": "https://app.example.com"}, clear=False)
+    @patch(f"{_PATCH_PREFIX}.issue_unsubscribe_token", return_value=True)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest", side_effect=RuntimeError("SMTP down"))
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_send_failure_only_logs_low_score_jobs(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        _mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        _mock_sent_ids: MagicMock,
+        mock_log: MagicMock,
+        mock_email: MagicMock,
+        mock_mark_last_sent: MagicMock,
+        _mock_unsub_token: MagicMock,
+    ) -> None:
+        """On send failure: only low-score IDs logged, good-match IDs NOT logged."""
+        from daily_task import main
+
+        good_job = _make_job_listing("Python Dev", "Corp", "https://example.com/good")
+        bad_job = _make_job_listing("Go Dev", "Startup", "https://example.com/bad")
+
+        mock_subs.return_value = [_make_subscriber(min_score=70)]
+        mock_search.return_value = [good_job, bad_job]
+        mock_eval.return_value = [
+            _make_evaluated_job(good_job, score=90),
+            _make_evaluated_job(bad_job, score=30),
+        ]
+        mock_job_ids.return_value = {
+            "https://example.com/good": "db-good",
+            "https://example.com/bad": "db-bad",
+        }
+
+        main()
+
+        # Email was attempted but failed
+        mock_email.assert_called_once()
+        # Only low-score job logged
+        mock_log.assert_called_once()
+        logged_ids = mock_log.call_args[0][2]
+        assert logged_ids == ["db-bad"]
+        # mark_subscriber_last_sent NOT called
+        mock_mark_last_sent.assert_not_called()
+
+    @patch.dict("os.environ", {"APP_URL": "https://app.example.com"}, clear=False)
+    @patch(f"{_PATCH_PREFIX}.issue_unsubscribe_token", return_value=True)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest")
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_send_success_logs_all_evaluated_jobs(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        _mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        _mock_sent_ids: MagicMock,
+        mock_log: MagicMock,
+        mock_email: MagicMock,
+        mock_mark_last_sent: MagicMock,
+        _mock_unsub_token: MagicMock,
+    ) -> None:
+        """On send success: both good + low-score IDs logged."""
+        from daily_task import main
+
+        good_job = _make_job_listing("Python Dev", "Corp", "https://example.com/good")
+        bad_job = _make_job_listing("Go Dev", "Startup", "https://example.com/bad")
+
+        mock_subs.return_value = [_make_subscriber(min_score=70)]
+        mock_search.return_value = [good_job, bad_job]
+        mock_eval.return_value = [
+            _make_evaluated_job(good_job, score=90),
+            _make_evaluated_job(bad_job, score=30),
+        ]
+        mock_job_ids.return_value = {
+            "https://example.com/good": "db-good",
+            "https://example.com/bad": "db-bad",
+        }
+
+        main()
+
+        mock_email.assert_called_once()
+        mock_log.assert_called_once()
+        logged_ids = mock_log.call_args[0][2]
+        assert set(logged_ids) == {"db-good", "db-bad"}
+        mock_mark_last_sent.assert_called_once()
+
+    @patch.dict("os.environ", {"APP_URL": "https://app.example.com"}, clear=False)
+    @patch(f"{_PATCH_PREFIX}.issue_unsubscribe_token", return_value=True)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest", side_effect=[RuntimeError("fail"), None])
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids")
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_retry_after_send_failure(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        _mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        mock_sent_ids: MagicMock,
+        mock_log: MagicMock,
+        mock_email: MagicMock,
+        mock_mark_last_sent: MagicMock,
+        _mock_unsub_token: MagicMock,
+    ) -> None:
+        """Simulates two runs: first fails send, second retries good matches."""
+        from daily_task import main
+
+        job = _make_job_listing("Python Dev", "Corp", "https://example.com/j1")
+        low_job = _make_job_listing("Bad Job", "X", "https://example.com/j2")
+
+        mock_subs.return_value = [_make_subscriber(min_score=70)]
+        mock_search.return_value = [job, low_job]
+        mock_eval.return_value = [
+            _make_evaluated_job(job, score=90),
+            _make_evaluated_job(low_job, score=30),
+        ]
+        mock_job_ids.return_value = {
+            "https://example.com/j1": "db-1",
+            "https://example.com/j2": "db-2",
+        }
+
+        # Run 1: send fails — only low-score logged
+        mock_sent_ids.return_value = set()
+        main()
+        assert mock_log.call_count == 1
+        assert mock_log.call_args[0][2] == ["db-2"]  # only low-score
+        mock_mark_last_sent.assert_not_called()
+
+        # Run 2: good match retries (low-score already in sent_ids)
+        mock_log.reset_mock()
+        mock_mark_last_sent.reset_mock()
+        mock_sent_ids.return_value = {"db-2"}  # low-score now in sent log
+        # Only the good job is unseen, so evaluate returns only it
+        mock_eval.return_value = [_make_evaluated_job(job, score=90)]
+        main()
+        assert mock_log.call_count == 1
+        assert mock_log.call_args[0][2] == ["db-1"]  # good match now logged
+        mock_mark_last_sent.assert_called_once()
+
+
+class TestDailyTaskLocationRelevance:
+    """R7: subscribers only evaluate jobs from their own location bucket."""
+
+    @patch.dict("os.environ", {"APP_URL": ""}, clear=False)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest")
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_location_relevance_filter(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        _mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        _mock_sent_ids: MagicMock,
+        mock_log: MagicMock,
+        mock_email: MagicMock,
+        _mock_mark_last_sent: MagicMock,
+    ) -> None:
+        """Two subscribers in different cities only evaluate jobs from their city."""
+        from daily_task import main
+
+        munich_sub = _make_subscriber(
+            sub_id="sub-munich",
+            target_location="Munich, Germany",
+            queries=["Python Developer"],
+        )
+        berlin_sub = _make_subscriber(
+            sub_id="sub-berlin",
+            target_location="Berlin, Germany",
+            queries=["Go Developer"],
+        )
+        mock_subs.return_value = [munich_sub, berlin_sub]
+
+        munich_job = _make_job_listing("Py Dev", "MunichCo", "https://example.com/munich")
+        berlin_job = _make_job_listing("Go Dev", "BerlinCo", "https://example.com/berlin")
+
+        # search_all_queries is called once per location; return location-specific jobs
+        def fake_search(queries: list[str], jobs_per_query: int, location: str) -> list[JobListing]:
+            if "München" in location:
+                return [munich_job]
+            if "Berlin" in location:
+                return [berlin_job]
+            return []
+
+        mock_search.side_effect = fake_search
+        mock_job_ids.return_value = {
+            "https://example.com/munich": "db-munich",
+            "https://example.com/berlin": "db-berlin",
+        }
+        mock_eval.return_value = []  # no good matches for simplicity
+
+        main()
+
+        # evaluate_all_jobs called twice (once per subscriber)
+        assert mock_eval.call_count == 2
+        # First call (munich sub) should only get the munich job
+        munich_eval_jobs = mock_eval.call_args_list[0][0][2]  # third positional: jobs
+        assert len(munich_eval_jobs) == 1
+        assert munich_eval_jobs[0].company_name == "MunichCo"
+        # Second call (berlin sub) should only get the berlin job
+        berlin_eval_jobs = mock_eval.call_args_list[1][0][2]
+        assert len(berlin_eval_jobs) == 1
+        assert berlin_eval_jobs[0].company_name == "BerlinCo"
+
+    @patch.dict("os.environ", {"APP_URL": ""}, clear=False)
+    @patch(f"{_PATCH_PREFIX}.mark_subscriber_last_sent")
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest")
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_empty_location_gets_empty_location_jobs(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        _mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        _mock_sent_ids: MagicMock,
+        _mock_log: MagicMock,
+        _mock_email: MagicMock,
+        _mock_mark_last_sent: MagicMock,
+    ) -> None:
+        """Subscriber with no target_location gets jobs from the empty-string bucket."""
+        from daily_task import main
+
+        sub = _make_subscriber(sub_id="sub-noloc", target_location="", queries=["Remote Python"])
+        mock_subs.return_value = [sub]
+
+        remote_job = _make_job_listing("Remote Py", "RemoteCo", "https://example.com/remote")
+        mock_search.return_value = [remote_job]
+        mock_job_ids.return_value = {"https://example.com/remote": "db-remote"}
+        mock_eval.return_value = []
+
+        main()
+
+        # The subscriber should still be evaluated against the remote job
+        assert mock_eval.call_count == 1
+        eval_jobs = mock_eval.call_args[0][2]
+        assert len(eval_jobs) == 1
+        assert eval_jobs[0].company_name == "RemoteCo"
+
+
 class TestDailyTaskNoProfileJson:
     """Subscriber with no stored profile_json should be skipped."""
 
