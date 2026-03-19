@@ -43,12 +43,12 @@ class TestUnsubscribeValidToken:
     """When a valid unsubscribe token is provided."""
 
     @patch.dict("os.environ", _FAKE_ENV, clear=False)
-    @patch("immermatch.db.deactivate_subscriber_by_token", return_value=True)
+    @patch("immermatch.db.delete_subscriber_by_token", return_value=True)
     @patch("immermatch.db.get_admin_client", return_value=MagicMock())
     def test_valid_token_shows_success(
         self,
         _mock_db: MagicMock,
-        _mock_deactivate: MagicMock,
+        _mock_delete_by_token: MagicMock,
     ) -> None:
         at = _build_app(token="valid-unsub-token")
         at.run()
@@ -58,27 +58,27 @@ class TestUnsubscribeValidToken:
         assert len(at.error) == 0
 
     @patch.dict("os.environ", _FAKE_ENV, clear=False)
-    @patch("immermatch.db.deactivate_subscriber_by_token", return_value=True)
+    @patch("immermatch.db.delete_subscriber_by_token", return_value=True)
     @patch("immermatch.db.get_admin_client", return_value=MagicMock())
-    def test_deactivate_called_with_token(
+    def test_delete_called_with_token(
         self,
         _mock_db: MagicMock,
-        mock_deactivate: MagicMock,
+        mock_delete_by_token: MagicMock,
     ) -> None:
         at = _build_app(token="my-unsubscribe-token")
         at.run()
 
-        mock_deactivate.assert_called_once()
-        args = mock_deactivate.call_args[0]
+        mock_delete_by_token.assert_called_once()
+        args = mock_delete_by_token.call_args[0]
         assert args[1] == "my-unsubscribe-token"
 
     @patch.dict("os.environ", _FAKE_ENV, clear=False)
-    @patch("immermatch.db.deactivate_subscriber_by_token", return_value=True)
+    @patch("immermatch.db.delete_subscriber_by_token", return_value=True)
     @patch("immermatch.db.get_admin_client", return_value=MagicMock())
     def test_success_mentions_data_deletion(
         self,
         _mock_db: MagicMock,
-        _mock_deactivate: MagicMock,
+        _mock_delete_by_token: MagicMock,
     ) -> None:
         at = _build_app(token="valid-token")
         at.run()
@@ -87,15 +87,15 @@ class TestUnsubscribeValidToken:
 
 
 class TestUnsubscribeInvalidToken:
-    """When deactivate_subscriber_by_token returns False (already cancelled / not found)."""
+    """When delete_subscriber_by_token returns False (already cancelled / not found)."""
 
     @patch.dict("os.environ", _FAKE_ENV, clear=False)
-    @patch("immermatch.db.deactivate_subscriber_by_token", return_value=False)
+    @patch("immermatch.db.delete_subscriber_by_token", return_value=False)
     @patch("immermatch.db.get_admin_client", return_value=MagicMock())
     def test_invalid_token_shows_info(
         self,
         _mock_db: MagicMock,
-        _mock_deactivate: MagicMock,
+        _mock_delete_by_token: MagicMock,
     ) -> None:
         at = _build_app(token="old-token")
         at.run()
@@ -109,12 +109,12 @@ class TestUnsubscribeDBError:
     """When the DB call raises an exception, show generic error."""
 
     @patch.dict("os.environ", _FAKE_ENV, clear=False)
-    @patch("immermatch.db.deactivate_subscriber_by_token", side_effect=RuntimeError("DB down"))
+    @patch("immermatch.db.delete_subscriber_by_token", side_effect=RuntimeError("DB down"))
     @patch("immermatch.db.get_admin_client", return_value=MagicMock())
     def test_db_error_shows_generic_message(
         self,
         _mock_db: MagicMock,
-        _mock_deactivate: MagicMock,
+        _mock_delete_by_token: MagicMock,
     ) -> None:
         at = _build_app(token="some-token")
         at.run()
