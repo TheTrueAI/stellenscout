@@ -14,7 +14,7 @@ for key in ("SUPABASE_URL", "SUPABASE_KEY", "SUPABASE_SERVICE_KEY"):
         with contextlib.suppress(KeyError, FileNotFoundError):
             os.environ[key] = st.secrets[key]
 
-from immermatch.db import deactivate_subscriber_by_token, get_admin_client  # noqa: E402
+from immermatch.db import delete_subscriber_by_token, get_admin_client  # noqa: E402
 
 st.set_page_config(page_title="Immermatch – Unsubscribe", page_icon="📭")
 
@@ -26,7 +26,7 @@ if not unsubscribe_token:
 
 try:
     db = get_admin_client()
-    success = deactivate_subscriber_by_token(db, unsubscribe_token)
+    success = delete_subscriber_by_token(db, unsubscribe_token)
 except Exception:
     logger.exception("Error during unsubscribe")
     st.error("Something went wrong. Please try again later.")

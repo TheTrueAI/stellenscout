@@ -82,12 +82,12 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [x] **Done when:** No BA job card shows `https://www.arbeitsagentur.de/` as an apply option.
 
 #### R6 — Unsubscribe hard-delete policy (#69)
-- [ ] **Step 1:** Confirm DB referential path for deleting subscriber row safely.
-- [ ] **Step 2:** Implement hard-delete on unsubscribe endpoint/service path.
-- [ ] **Step 3:** Update privacy/unsubscribe copy so behavior and text are identical.
-- [ ] **Step 4:** Add tests for successful hard-delete and missing-token/error behavior.
-- [ ] **Step 5:** Verify no personal fields remain after unsubscribe flow completion.
-- [ ] **Done when:** Unsubscribe removes subscriber row and aligns with user-facing legal text.
+- [x] **Step 1:** Confirm DB referential path for deleting subscriber row safely.
+- [x] **Step 2:** Implement hard-delete on unsubscribe endpoint/service path.
+- [x] **Step 3:** Update privacy/unsubscribe copy so behavior and text are identical.
+- [x] **Step 4:** Add tests for successful hard-delete and missing-token/error behavior.
+- [x] **Step 5:** Verify no personal fields remain after unsubscribe flow completion.
+- [x] **Done when:** Unsubscribe removes subscriber row and aligns with user-facing legal text.
 
 #### R7 — Digest correctness and send/log integrity (#44)
 - [ ] **Step 1:** Define correct operation order: candidate selection → send → log sent.

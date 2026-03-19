@@ -110,10 +110,9 @@ If you have questions about how the AI evaluation works, contact us at
 
 ## 6. Data Retention
 
-- **Email address** — stored as long as your subscription is active. After
-  unsubscribing, your record is deactivated and retained for up to **30 days**
-  before automatic deletion. You may request immediate deletion at any time (see
-  Section 9).
+- **Email address** — stored as long as your subscription is active. When you
+  unsubscribe, your data is deleted immediately. If your subscription expires
+  without renewal, your record is deactivated and deleted within **7 days**.
 - **CV / Resume** — your uploaded file is processed transiently and removed after
   extraction. Derived analysis results (profile, queries, evaluations) are
   cached locally on the server for up to 24 hours to avoid redundant processing,

@@ -128,40 +128,44 @@ class TestDeactivateSubscriber:
 
 
 # ---------------------------------------------------------------------------
-# TestDeactivateSubscriberByToken
+# TestDeleteSubscriberByToken
 # ---------------------------------------------------------------------------
 
 
-class TestDeactivateSubscriberByToken:
+class TestDeleteSubscriberByToken:
     def _setup_select(self, client, rows):
         """Wire the select→eq→execute chain for the initial token lookup."""
         client.table.return_value.select.return_value.eq.return_value.execute.return_value = _make_execute(data=rows)
 
-    @patch("immermatch.db.delete_subscriber_data")
-    @patch("immermatch.db.deactivate_subscriber", return_value=True)
-    def test_valid_token_deactivates_and_deletes(self, mock_deactivate, mock_delete):
+    def test_valid_token_hard_deletes_row(self):
         client = _mock_client()
         expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
         self._setup_select(client, [{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expires}])
+        client.table.return_value.delete.return_value.eq.return_value.execute.return_value = _make_execute(
+            data=[{"id": SUB_ID}]
+        )
 
-        result = db.deactivate_subscriber_by_token(client, UNSUB_TOKEN)
+        result = db.delete_subscriber_by_token(client, UNSUB_TOKEN)
 
         assert result is True
-        mock_deactivate.assert_called_once_with(client, SUB_ID)
-        mock_delete.assert_called_once_with(client, SUB_ID)
+        client.table.return_value.delete.return_value.eq.assert_called_once_with("id", SUB_ID)
 
     def test_unknown_token_returns_false(self):
         client = _mock_client()
         self._setup_select(client, [])
 
-        assert db.deactivate_subscriber_by_token(client, "nonexistent") is False
+        assert db.delete_subscriber_by_token(client, "nonexistent") is False
 
-    def test_already_inactive_returns_false(self):
+    def test_inactive_subscriber_with_valid_token_is_deleted(self):
         client = _mock_client()
         expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
         self._setup_select(client, [{"id": SUB_ID, "is_active": False, "unsubscribe_token_expires_at": expires}])
+        client.table.return_value.delete.return_value.eq.return_value.execute.return_value = _make_execute(
+            data=[{"id": SUB_ID}]
+        )
 
-        assert db.deactivate_subscriber_by_token(client, UNSUB_TOKEN) is False
+        assert db.delete_subscriber_by_token(client, UNSUB_TOKEN) is True
+        client.table.return_value.delete.return_value.eq.assert_called_once_with("id", SUB_ID)
 
     @freeze_time("2026-02-20T12:00:00Z")
     def test_expired_token_returns_false(self):
@@ -169,7 +173,15 @@ class TestDeactivateSubscriberByToken:
         expired = (datetime(2026, 2, 19, tzinfo=timezone.utc)).isoformat()
         self._setup_select(client, [{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expired}])
 
-        assert db.deactivate_subscriber_by_token(client, UNSUB_TOKEN) is False
+        assert db.delete_subscriber_by_token(client, UNSUB_TOKEN) is False
+
+    def test_delete_returns_false_on_empty_result(self):
+        client = _mock_client()
+        expires = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+        self._setup_select(client, [{"id": SUB_ID, "is_active": True, "unsubscribe_token_expires_at": expires}])
+        client.table.return_value.delete.return_value.eq.return_value.execute.return_value = _make_execute(data=[])
+
+        assert db.delete_subscriber_by_token(client, UNSUB_TOKEN) is False
 
 
 # ---------------------------------------------------------------------------

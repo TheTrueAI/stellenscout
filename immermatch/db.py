@@ -1,10 +1,13 @@
 """Supabase database layer for Immermatch."""
 
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Any
 
 from supabase import Client, create_client
+
+logger = logging.getLogger(__name__)
 
 # Number of days a confirmed subscription is active before auto-expiry.
 SUBSCRIPTION_DAYS = 30
@@ -226,8 +229,16 @@ def clear_manage_token(client: Client, subscriber_id: str) -> bool:
     return bool(result.data)
 
 
-def deactivate_subscriber_by_token(client: Client, token: str) -> bool:
-    """Deactivate a subscriber via one-time unsubscribe token."""
+def delete_subscriber_by_token(client: Client, token: str) -> bool:
+    """Hard-delete a subscriber row via one-time unsubscribe token.
+
+    Looks up the subscriber by unsubscribe token, validates the token is
+    active and unexpired, then DELETEs the entire row.  The CASCADE FK on
+    ``job_sent_logs`` ensures associated rows are cleaned up automatically.
+
+    Returns True on successful deletion, False if the token is
+    invalid or expired.
+    """
     rows = (
         client.table("subscribers")
         .select("id, unsubscribe_token_expires_at, is_active")
@@ -239,17 +250,13 @@ def deactivate_subscriber_by_token(client: Client, token: str) -> bool:
         return False
 
     sub = rows[0]
-    if not sub.get("is_active"):
-        return False
-
     exp_dt = _parse_iso_utc(sub.get("unsubscribe_token_expires_at"))
     if exp_dt and datetime.now(timezone.utc) > exp_dt:
         return False
 
-    success = deactivate_subscriber(client, sub["id"])
-    if success:
-        delete_subscriber_data(client, sub["id"])
-    return success
+    logger.info("Hard-deleting subscriber %s via unsubscribe token", sub["id"])
+    result = client.table("subscribers").delete().eq("id", sub["id"]).execute()
+    return bool(result.data)
 
 
 def purge_inactive_subscribers(client: Client, older_than_days: int = 7) -> int:
