@@ -90,12 +90,12 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [x] **Done when:** Unsubscribe removes subscriber row and aligns with user-facing legal text.
 
 #### R7 — Digest correctness and send/log integrity (#44)
-- [ ] **Step 1:** Define correct operation order: candidate selection → send → log sent.
-- [ ] **Step 2:** Guard against logging jobs as sent if email delivery fails.
-- [ ] **Step 3:** Enforce subscriber-location relevance filter before evaluation/send stage.
-- [ ] **Step 4:** Add retry/idempotency guard for digest run duplication risk.
-- [ ] **Step 5:** Add tests for send-failure path, retry path, and location relevance.
-- [ ] **Done when:** No send/log mismatch and no wrong-location digest entries in tested scenarios.
+- [x] **Step 1:** Define correct operation order: candidate selection → send → log sent.
+- [x] **Step 2:** Guard against logging jobs as sent if email delivery fails.
+- [x] **Step 3:** Enforce subscriber-location relevance filter before evaluation/send stage.
+- [x] **Step 4:** Add retry/idempotency guard for digest run duplication risk.
+- [x] **Step 5:** Add tests for send-failure path, retry path, and location relevance.
+- [x] **Done when:** No send/log mismatch and no wrong-location digest entries in tested scenarios.
 
 ### Week 3 — Reliability Debt and Architecture Safety
 
