@@ -87,10 +87,14 @@ class JobListing(BaseModel):
     )
 
 
+ERROR_SCORE: int = -1
+"""Sentinel score returned when evaluation fails (API error, parse error, etc.)."""
+
+
 class JobEvaluation(BaseModel):
     """Evaluation result for a job listing against a CV."""
 
-    score: int = Field(ge=0, le=100, description="Match score from 0-100")
+    score: int = Field(ge=ERROR_SCORE, le=100, description="Match score 0-100, or -1 for evaluation errors")
     reasoning: str = Field(description="Concise explanation of the score")
     missing_skills: list[str] = Field(default_factory=list, description="Skills the candidate is missing for this role")
 

@@ -6,18 +6,20 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from google import genai
 from google.genai.errors import ClientError, ServerError
+from pydantic import Field
 
 from .llm import call_gemini, parse_json
-from .models import CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
+from .models import ERROR_SCORE, CandidateProfile, EvaluatedJob, JobEvaluation, JobListing
 
 # System prompt for the Screener agent
 SCREENER_SYSTEM_PROMPT = """You are a strict Hiring Manager. Evaluate if the candidate is a fit for this specific job.
 
 **Scoring Rubric (0-100):**
-- **100:** Perfect match. The candidate has the exact years of experience, tech stack, and language skills required.
-- **80-99:** Great match. Role matches candidate's seniority level. Missing minor "nice-to-haves" or slightly different domain, but strong core skills.
-- **50-79:** Potential fit. Strong skills but missing a key framework, or slightly off on domain experience.
-- **0-49:** Hard pass. Wrong stack (Java vs Python), wrong language (requires German C2 but candidate is A1), seniority mismatch, or wrong role entirely.
+- **90-100:** Would get an interview almost anywhere. Exact stack, seniority, language, and domain match.
+- **75-89:** Solid fit. Core skills align, 1-2 minor gaps (e.g., missing a "nice-to-have" framework or slightly different domain).
+- **60-74:** Borderline. One significant mismatch — wrong framework, partial domain overlap, or slightly off on seniority.
+- **40-59:** Stretch. Multiple gaps or one major mismatch. Would need to spin the application creatively.
+- **0-39:** Disqualifying mismatch. Wrong stack, wrong language, wrong seniority, or wrong role entirely.
 
 **Temporal weighting — this is critical:**
 - Pay close attention to the candidate's **Work History** timeline.
@@ -38,6 +40,32 @@ Return ONLY a JSON object with:
 - "missing_skills": (list) What is the candidate missing? Empty list if nothing major.
 
 Be critical but fair. European companies often have strict requirements."""
+
+
+_MAX_DESC_CHARS = 2000
+
+
+class _LlmJobEvaluation(JobEvaluation):
+    """Schema used for LLM responses only; keeps score strictly in 0-100."""
+
+    score: int = Field(ge=0, le=100)
+
+
+def _truncate_description(text: str, limit: int = _MAX_DESC_CHARS) -> str:
+    """Truncate a job description preserving both the start and the end.
+
+    Many European job listings front-load company boilerplate and put the actual
+    requirements/qualifications near the end.  A naive ``text[:limit]`` would
+    discard exactly the part the LLM needs most.  Instead we keep the first half
+    of the budget and the last half, joining them with an ellipsis marker.
+    """
+    if len(text) <= limit:
+        return text
+    marker = "\n\n[...truncated...]\n\n"
+    if limit <= len(marker):
+        return text[:limit]
+    half = (limit - len(marker)) // 2
+    return text[:half] + marker + text[-half:]
 
 
 def evaluate_job(client: genai.Client, profile: CandidateProfile, job: JobListing) -> JobEvaluation:
@@ -93,7 +121,7 @@ def evaluate_job(client: genai.Client, profile: CandidateProfile, job: JobListin
 - **Location:** {job.location}
 
 **Job Description:**
-{job.description[:2000] if job.description else "No detailed description available."}
+{_truncate_description(job.description) if job.description else "No detailed description available."}
 
 ---
 Evaluate this job match and return JSON."""
@@ -101,17 +129,23 @@ Evaluate this job match and return JSON."""
     prompt = f"{SCREENER_SYSTEM_PROMPT}\n\n{user_prompt}"
 
     try:
-        content = call_gemini(client, prompt, max_tokens=4096, response_schema=JobEvaluation.model_json_schema())
+        content = call_gemini(client, prompt, max_tokens=512, response_schema=_LlmJobEvaluation.model_json_schema())
     except (ServerError, ClientError):
-        return JobEvaluation(score=50, reasoning="Could not evaluate (API error after retries)", missing_skills=[])
+        return JobEvaluation(
+            score=ERROR_SCORE, reasoning="Could not evaluate (API error after retries)", missing_skills=[]
+        )
 
     try:
         data = parse_json(content)
     except ValueError:
-        return JobEvaluation(score=50, reasoning="Could not evaluate (failed to parse response)", missing_skills=[])
+        return JobEvaluation(
+            score=ERROR_SCORE, reasoning="Could not evaluate (failed to parse response)", missing_skills=[]
+        )
 
     if not isinstance(data, dict):
-        return JobEvaluation(score=50, reasoning="Could not evaluate (unexpected response format)", missing_skills=[])
+        return JobEvaluation(
+            score=ERROR_SCORE, reasoning="Could not evaluate (unexpected response format)", missing_skills=[]
+        )
     return JobEvaluation(**data)
 
 
@@ -190,10 +224,14 @@ def generate_summary(
     Returns:
         Markdown-formatted summary string.
     """
-    # Score distribution
+    # Score distribution (exclude error sentinels from bins)
     bins = {"≥80": 0, "70-79": 0, "50-69": 0, "<50": 0}
+    error_count = 0
     for ej in evaluated_jobs:
         s = ej.evaluation.score
+        if s < 0:
+            error_count += 1
+            continue
         if s >= 80:
             bins["≥80"] += 1
         elif s >= 70:
@@ -226,6 +264,7 @@ def generate_summary(
     )
 
     dist_text = ", ".join(f"{k}: {v}" for k, v in bins.items())
+    scored_count = len(evaluated_jobs) - error_count
 
     # Build condensed career timeline for the advisor
     career_timeline = ""
@@ -242,7 +281,7 @@ def generate_summary(
 - **Target Roles:** {", ".join(profile.roles)}
 - **Languages:** {", ".join(profile.languages)}{career_timeline}
 
-## Score Distribution ({len(evaluated_jobs)} jobs evaluated)
+## Score Distribution ({scored_count} scored jobs, {error_count} evaluation errors, {len(evaluated_jobs)} total)
 {dist_text}
 
 ## Top Matches
