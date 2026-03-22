@@ -601,7 +601,7 @@ class TestEvaluationScoring:
         mock_gemini: MagicMock,
         mock_client: MagicMock,
     ) -> None:
-        """A failing evaluation gets fallback score=50; others complete normally."""
+        """A failing evaluation gets fallback score=-1; others complete normally."""
         from google.genai.errors import ServerError
 
         mock_gemini.side_effect = [
@@ -615,7 +615,7 @@ class TestEvaluationScoring:
 
         assert len(evaluated) == 3
         scores = [e.evaluation.score for e in evaluated]
-        assert 50 in scores  # fallback score
+        assert -1 in scores  # error sentinel score
         assert 90 in scores
         assert 70 in scores
 

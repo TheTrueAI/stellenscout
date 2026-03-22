@@ -9,30 +9,32 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 
 ## 1) Current Priority Lens (Impact First)
 
-1. **Search relevance and location consistency**
-2. **UX clarity during pipeline transitions**
-3. **Digest reliability and subscription data lifecycle**
-4. **Growth instrumentation and acquisition loops**
-5. **Monetization readiness (de-prioritized until usage signal improves)**
+1. ~~Search relevance and location consistency~~ *(done — R1, R2, R3, R4)*
+2. ~~UX clarity during pipeline transitions~~ *(done — R1, R3)*
+3. ~~Digest reliability and subscription data lifecycle~~ *(done — R5, R6, R7)*
+4. **Subscription safety: token split + schema foundation** *(R8 — in progress)*
+5. **Growth instrumentation: measure impact of R1–R7, then decide next investments** *(R9, R10)*
+6. **Architecture debt — only after data from step 5** *(R11, R12)*
+7. **Monetization readiness (de-prioritized until usage signal improves)**
 
 ---
 
 ## 2) Impact × Effort Triage (Active Problems)
 
-| ID | Problem | Impact | Effort | Decision |
+| ID | Problem | Impact | Effort | Status |
 |---|---|---|---|---|
-| R1 | Sidebar location updates too late; transition feels unclear while CV extraction is still running | High | Medium | **Do now** |
-| R2 | `Cologne` vs `Köln`, `Munich` vs `München` produce different outcomes | High | Medium | **Do now** |
-| R3 | `✅ Queries generated` expander appears empty during search | Medium | Small | **Do now** |
-| R4 | Jobs appear mixed across city searches (homepage symptom) | High | Medium | **Do now** |
-| R5 | BA listings include useless homepage links (`https://www.arbeitsagentur.de/`) | High | Medium | **Do now** |
-| R6 | Unsubscribe should hard-delete subscriber record, not only set `is_active=false` | High | Medium | **Do now** |
-| R7 | Digest reliability gap: avoid wrong-city jobs and mark-as-sent only after successful send | High | Medium | **Do now** |
+| R1 | Sidebar location updates too late; transition feels unclear while CV extraction is still running | High | Medium | **Done** |
+| R2 | `Cologne` vs `Köln`, `Munich` vs `München` produce different outcomes | High | Medium | **Done** |
+| R3 | `✅ Queries generated` expander appears empty during search | Medium | Small | **Done** |
+| R4 | Jobs appear mixed across city searches (homepage symptom) | High | Medium | **Done** |
+| R5 | BA listings include useless homepage links (`https://www.arbeitsagentur.de/`) | High | Medium | **Done** |
+| R6 | Unsubscribe should hard-delete subscriber record, not only set `is_active=false` | High | Medium | **Done** |
+| R7 | Digest reliability gap: avoid wrong-city jobs and mark-as-sent only after successful send | High | Medium | **Done** |
 | R8 | Confirmation token and manage-token collision in DB schema | High | Medium | **Do now** |
-| R9 | Low user count; no privacy-safe funnel instrumentation for actionable growth work | High | Medium | **Do next** |
+| R9 | Low user count; no privacy-safe funnel instrumentation for actionable growth work | High | Medium | **Do now** |
 | R10 | GitHub issues and milestones are stale vs real priorities | High | Small | **Do now** |
-| R11 | `app.py` is a 1,500-line god file; pipeline logic duplicated between `app.py` and `daily_task.py` | High | Large | **Do now** |
-| R12 | File-based `ResultCache` breaks on multi-instance deploys, leaks across users sharing same CV hash | Medium | Medium | **Do next** |
+| R11 | `app.py` is a 1,500-line god file; pipeline logic duplicated between `app.py` and `daily_task.py` | High | Large | **After R9 data** |
+| R12 | File-based `ResultCache` breaks on multi-instance deploys, leaks across users sharing same CV hash | Medium | Medium | **After R9 data** |
 
 ---
 
@@ -97,7 +99,7 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [x] **Step 5:** Add tests for send-failure path, retry path, and location relevance.
 - [x] **Done when:** No send/log mismatch and no wrong-location digest entries in tested scenarios.
 
-### Week 3 — Reliability Debt and Architecture Safety
+### Phase 3 — Subscription Safety + Schema Foundation
 
 #### R8 — Token split for DOI vs manage links (#71)
 - [ ] **Step 1:** Add dedicated `manage_token` and `manage_token_expires_at` schema fields.
@@ -112,6 +114,34 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [ ] **Step 2:** Backfill current schema as an initial baseline migration.
 - [ ] **Step 3:** Add contributor docs for applying migrations locally and in deployment.
 - [ ] **Done when:** Schema changes are code-reviewed and reproducible from repo state.
+
+### Phase 4 — Measure Impact + Growth Instrumentation
+
+> R1–R7 shipped a wave of quality fixes. Before investing in large refactors, measure whether those fixes moved conversion — otherwise we're optimizing blind.
+
+#### R9 — Privacy-safe funnel instrumentation (#31)
+- [ ] **Step 1:** Define exact funnel events and event dictionary (no PII fields).
+- [ ] **Step 2:** Implement event emission at each funnel boundary.
+- [ ] **Step 3:** Build weekly aggregate report (conversion per stage + drop-off deltas).
+- [ ] **Step 4:** Validate data retention window and privacy policy consistency.
+- [ ] **Done when:** Weekly funnel report exists and is usable for prioritization decisions.
+
+#### Roadmap checkpoint (R10)
+- [ ] **Step 1:** Review all active issues for impact/effort drift.
+- [ ] **Step 2:** Close, defer, or split oversized issues into executable units.
+- [ ] **Step 3:** Re-rank the next sprint backlog using current KPIs.
+- [ ] **Done when:** Open issue list reflects only near-term, execution-ready work.
+
+#### Growth experiments (#43)
+- [ ] **Step 1:** Propose 3 experiments with hypothesis, owner, and expected KPI shift.
+- [ ] **Step 2:** Run at least 2 experiments within the week.
+- [ ] **Step 3:** Record outcomes using a simple win/learn/kill template.
+- [ ] **Step 4:** Fold insights into next roadmap revision.
+- [ ] **Done when:** At least 2 measured experiments are completed and reviewed.
+
+### Phase 5 — Architecture Debt (informed by Phase 4 data)
+
+> Sequence these based on what funnel data reveals. If conversion is strong, R11/R12 improve maintainability for the next growth push. If conversion is weak, revisit whether these are the right investments.
 
 #### R11 — Extract pipeline service layer
 - [ ] **Step 1:** Identify shared logic between `app.py:_run_pipeline()` and `daily_task.py:main()` — dedup, URL extraction, evaluation orchestration, "already seen" tracking.
@@ -136,28 +166,6 @@ This roadmap replaces the old launch-phase plan and reflects current reality:
 - [ ] **Step 3:** Write incident runbook for provider/API/DB/email failure classes.
 - [ ] **Step 4:** Add post-incident review template.
 - [ ] **Done when:** SLOs and runbooks are documented and linked from operations docs.
-
-### Week 4 — Balanced Growth Sprint
-
-#### R9 — Privacy-safe funnel instrumentation (#31)
-- [ ] **Step 1:** Define exact funnel events and event dictionary (no PII fields).
-- [ ] **Step 2:** Implement event emission at each funnel boundary.
-- [ ] **Step 3:** Build weekly aggregate report (conversion per stage + drop-off deltas).
-- [ ] **Step 4:** Validate data retention window and privacy policy consistency.
-- [ ] **Done when:** Weekly funnel report exists and is usable for prioritization decisions.
-
-#### Growth experiments (#43)
-- [ ] **Step 1:** Propose 3 experiments with hypothesis, owner, and expected KPI shift.
-- [ ] **Step 2:** Run at least 2 experiments within the week.
-- [ ] **Step 3:** Record outcomes using a simple win/learn/kill template.
-- [ ] **Step 4:** Fold insights into next roadmap revision.
-- [ ] **Done when:** At least 2 measured experiments are completed and reviewed.
-
-#### Weekly roadmap checkpoint (R10)
-- [ ] **Step 1:** Review all active issues for impact/effort drift.
-- [ ] **Step 2:** Close, defer, or split oversized issues into executable units.
-- [ ] **Step 3:** Re-rank the next sprint backlog using current KPIs.
-- [ ] **Done when:** Open issue list reflects only near-term, execution-ready work.
 
 ---
 
@@ -217,9 +225,18 @@ Trigger for activation: sustained usage and clear conversion signal (e.g., stabl
 
 ## 7) Decision Log
 
+- **Date:** 2026-03-19
+- **Hypothesis:** With R1–R7 quality fixes shipped, measuring their impact before investing in large refactors (R11, R12) will lead to better prioritization.
+- **Evidence:** R1–R7 all completed. No funnel data exists yet to confirm whether fixes moved conversion. R8 is a real bug (token collision breaks DOI). R11/R12 are large internal efforts with no direct user-facing impact.
+- **Decision:** Reorder remaining work: R8 + schema versioning first (fix the bug), then R9/R10 (measure + recalibrate), then R11/R12 (refactor only if data supports it). Replaced fixed week numbering with phases since original timeline has drifted.
+- **KPI impact expected:** Faster DOI fix improves subscription conversion; earlier instrumentation enables data-driven decisions for architecture investment.
+- **Revisit date:** 2026-04-03
+
+---
+
 - **Date:** 2026-03-06
 - **Hypothesis:** Fixing relevance/trust and UX transition friction will improve conversion more than shipping monetization now.
 - **Evidence:** User feedback on location inconsistency, mixed-city results, empty query expander, weak link quality, and stale issue backlog.
 - **Decision:** Re-prioritize next 4 weeks to quality/reliability + balanced growth instrumentation.
-- **Expected KPI impact:** Higher search completion, higher subscribe + DOI conversion, fewer trust-breaking mismatches.
+- **KPI impact expected:** Higher search completion, higher subscribe + DOI conversion, fewer trust-breaking mismatches.
 - **Revisit date:** 2026-04-03

@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.genai.errors import ServerError
 
-from immermatch.evaluator_agent import evaluate_all_jobs, evaluate_job, generate_summary
+from immermatch.evaluator_agent import _truncate_description, evaluate_all_jobs, evaluate_job, generate_summary
 from immermatch.models import (
     CandidateProfile,
     EvaluatedJob,
@@ -57,8 +57,12 @@ class TestEvaluateJob:
         assert result.reasoning == "Good fit"
         assert result.missing_skills == ["Go"]
         mock_call.assert_called_once()
-        # Verify structured output schema is passed
-        assert mock_call.call_args.kwargs.get("response_schema") == JobEvaluation.model_json_schema()
+        # Verify strict LLM schema is passed (0-100 score only)
+        schema = mock_call.call_args.kwargs.get("response_schema")
+        assert isinstance(schema, dict)
+        score_schema = schema.get("properties", {}).get("score", {})
+        assert score_schema.get("minimum") == 0
+        assert score_schema.get("maximum") == 100
 
     @patch("immermatch.evaluator_agent.call_gemini")
     def test_api_error_returns_fallback(self, mock_call: MagicMock, mock_client, simple_profile, simple_job):
@@ -66,7 +70,7 @@ class TestEvaluateJob:
 
         result = evaluate_job(mock_client, simple_profile, simple_job)
 
-        assert result.score == 50
+        assert result.score == -1
         assert "API error" in result.reasoning
 
     @patch("immermatch.evaluator_agent.parse_json")
@@ -79,7 +83,7 @@ class TestEvaluateJob:
 
         result = evaluate_job(mock_client, simple_profile, simple_job)
 
-        assert result.score == 50
+        assert result.score == -1
         assert "parse" in result.reasoning
 
     @patch("immermatch.evaluator_agent.parse_json")
@@ -92,7 +96,7 @@ class TestEvaluateJob:
 
         result = evaluate_job(mock_client, simple_profile, simple_job)
 
-        assert result.score == 50
+        assert result.score == -1
         assert "unexpected" in result.reasoning
 
     @patch("immermatch.evaluator_agent.parse_json")
@@ -115,6 +119,12 @@ class TestEvaluateJob:
         prompt = mock_call.call_args[0][1]
         assert "remote only, no startups" in prompt
         assert "**Preferences:**" in prompt
+
+
+class TestTruncateDescription:
+    def test_small_limit_falls_back_to_prefix(self):
+        text = "abcdefghijklmnopqrstuvwxyz"
+        assert _truncate_description(text, limit=5) == "abcde"
 
 
 class TestEvaluateAllJobs:

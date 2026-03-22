@@ -400,6 +400,46 @@ class TestDailyTaskNoGoodMatches:
         # But the job should still be logged
         mock_log.assert_called_once()
 
+    @patch(f"{_PATCH_PREFIX}.send_daily_digest")
+    @patch(f"{_PATCH_PREFIX}.log_sent_jobs")
+    @patch(f"{_PATCH_PREFIX}.get_sent_job_ids", return_value=set())
+    @patch(f"{_PATCH_PREFIX}.get_job_ids_by_urls")
+    @patch(f"{_PATCH_PREFIX}.upsert_jobs")
+    @patch(f"{_PATCH_PREFIX}.evaluate_all_jobs")
+    @patch(f"{_PATCH_PREFIX}.search_all_queries")
+    @patch(f"{_PATCH_PREFIX}.get_active_subscribers_with_profiles")
+    @patch(f"{_PATCH_PREFIX}.purge_inactive_subscribers", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.expire_subscriptions", return_value=0)
+    @patch(f"{_PATCH_PREFIX}.create_client", return_value=MagicMock())
+    @patch(f"{_PATCH_PREFIX}.get_db", return_value=MagicMock())
+    def test_error_scores_not_logged_as_low_score_completed(
+        self,
+        _mock_db: MagicMock,
+        _mock_client: MagicMock,
+        _mock_expire: MagicMock,
+        _mock_purge: MagicMock,
+        mock_subs: MagicMock,
+        mock_search: MagicMock,
+        mock_eval: MagicMock,
+        _mock_upsert: MagicMock,
+        mock_job_ids: MagicMock,
+        _mock_sent_ids: MagicMock,
+        mock_log: MagicMock,
+        mock_email: MagicMock,
+    ) -> None:
+        from daily_task import main
+
+        job = _make_job_listing(url="https://example.com/j1")
+        mock_subs.return_value = [_make_subscriber(min_score=80)]
+        mock_search.return_value = [job]
+        mock_eval.return_value = [_make_evaluated_job(job, score=-1)]
+        mock_job_ids.return_value = {"https://example.com/j1": "db-1"}
+
+        main()
+
+        mock_email.assert_not_called()
+        mock_log.assert_not_called()
+
 
 class TestDailyTaskWeeklyCadence:
     """Weekly subscribers whose last send was <7 days ago should be skipped."""

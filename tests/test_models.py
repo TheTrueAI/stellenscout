@@ -177,9 +177,13 @@ class TestJobEvaluation:
         assert JobEvaluation(score=0, reasoning="No match.").score == 0
         assert JobEvaluation(score=100, reasoning="Perfect.").score == 100
 
+    def test_error_sentinel_score(self):
+        e = JobEvaluation(score=-1, reasoning="Error.")
+        assert e.score == -1
+
     def test_score_too_low(self):
         with pytest.raises(ValidationError):
-            JobEvaluation(score=-1, reasoning="Bad.")
+            JobEvaluation(score=-2, reasoning="Bad.")
 
     def test_score_too_high(self):
         with pytest.raises(ValidationError):

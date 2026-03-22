@@ -218,7 +218,7 @@ def main() -> int:
         low_score_ids = [
             url_to_db_id[url]
             for ej, url in evaluated_with_urls
-            if ej.evaluation.score < sub_min_score and url in url_to_db_id
+            if 0 <= ej.evaluation.score < sub_min_score and url in url_to_db_id
         ]
         good_match_ids = [
             url_to_db_id[url]
